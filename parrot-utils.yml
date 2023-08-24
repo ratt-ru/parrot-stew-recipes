@@ -1,0 +1,94 @@
+_include:
+  - image-parrot.yml
+
+ratt-parrot:
+  steps:
+    flaglist:
+      cab: flagman
+      params:
+        ms: =recipe.ms
+        mode: list
+      skip: true
+
+    freq-cube-3:
+      cab: stack_freq_cube
+      params:
+        images: '{steps.image-3.restored}'
+        cube: '{steps.image-3.prefix}-cube.fits'
+      skip_if_outputs: fresh
+
+    image-4pol:
+      skip: true
+      _use: lib.steps.wsclean.rrat-pol
+      params:
+        column: SELFCAL4_DATA
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.mask)
+        auto-threshold: 1
+
+    fft-image-4htc:
+      recipe:
+        inputs:
+          images: 
+            dtype: List[File]
+        for_loop:
+          var: image
+          over: images
+          scatter: 64
+        steps:
+          fft:
+            cab: fft-image
+            params:
+              image: =recipe.image
+              fft-image: =STRIPEXT(recipe.image) + ".fft.fits"
+              lambda-per-arcsec: 100
+      params:
+        images: '{steps.image-*htc.restored-timeint}'
+
+    fft-cube-4htc:
+      cab: stack_freq_cube
+      params:
+        images: =GLOB(steps.image-*htc.prefix + "*.fft.fits")
+        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/fft-cube-{recipe.htc_cadence}.fits'
+      skip_if_outputs: fresh
+
+    source_catalog_spi:
+      skip: true
+      cab: pybdsm
+      params:
+        image: 'obs-l1-qc2/im3/im3-cube-pbcorr.fits'
+        thresh_pix: 10
+        thresh_isl: 3
+        rms_box: [100,20]
+        rms_map: false
+        spectralindex_do: true
+        flagging_opts: true
+        flag_maxsize_bm: 10
+        catalog_type: gaul
+        catalog_format: ascii
+        outfile: '{current.image}.srl'
+
+    extract-lightcurves-agn:
+      _use: ratt-rrat.steps.extract-lightcurves
+      skip: true
+      params:
+        interesting_regions: [interests.reg, agn-candidates.reg]
+
+    extract-lightcurves-psr:
+      _use: ratt-rrat.steps.extract-lightcurves
+      skip: true
+      params:
+        # outdir: ='{recipe.dir-out}/psr-lc-cad{recipe.htc_cadence}' + IF(recipe.convolve_cubes, 'conv', '')
+        interesting_regions: [interests.reg, agn-candidates.reg, vlbi-calibrators.reg]
+        search_box_radec: [303.19deg, -20.492deg, 15arcsec, 40arcmin]
+        search_box_frame: geocentricmeanecliptic
+        search_box_label: PSR
+        search_box_minflux: 200uJy
+
+    get-pa-range:
+      cab: get-parang-range
+      params:
+        ms: =recipe.ms
+
+    
+
+

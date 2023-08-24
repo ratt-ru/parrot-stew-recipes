@@ -1,0 +1,680 @@
+#!/usr/bin/env -S stimela run
+
+_include:
+  - parrot-cabs.yml
+
+
+## this augments the standard 'opts' config section to tweak logging settings
+opts:
+  log:
+    dir: logs/log-{config.run.datetime}
+    name: log-{info.fqname}
+    nest: 2
+    symlink: log
+  rlimits:
+    NOFILE: 100000  # set high limit on number of open files
+
+ratt-parrot:
+  name: ratt-parrot
+  info: "imaging of RATT PARROT follow-up observations"
+
+  assign:
+    dir-out: '{recipe.dirs.base}/{recipe.dirs.sub}{recipe.output-suffix}'                     # output products go here
+    image-prefix: '{recipe.dir-out}/im{info.suffix}{recipe.variant}/im{info.suffix}{recipe.variant}'  # prefix for image names at each step
+    log.dir: '{recipe.dir-out}/logs/log-{config.run.datetime}'          # put logs into output dir
+    # some more directory assignments
+    dirs:
+      ms: ../msdir       # MSs live here
+      temp: "{config.run.env.HOME}/tmp"   # temp files go here
+      base: .            # base project directory -- directory of recipe by default, but see below
+
+    # _chan1x: =recipe.chan1 - 1       # end channel, inclusive -- helper variable to form CASA spw
+    casa-spw: 0 #"0:{recipe.chan0}~{recipe._chan1x}"  # CASA spw parameter
+
+    # extra lightcurve suffix, added if convolving
+    lc-suffix: =IF(recipe.convolve.arcsec or recipe.convolve.time, "-{recipe.convolve.time:.0f}s-{recipe.convolve.arcsec:.0f}asec", "")
+    lc-suffix-sub: =IF(recipe.convolve-sub.arcsec or recipe.convolve-sub.time, "-{recipe.convolve-sub.time:.0f}s-{recipe.convolve-sub.arcsec:.0f}asec", "")
+
+  assign_based_on:
+    _include: parrot-observation-sets.yml
+
+  inputs:
+    obs:
+      choices: [L1, L2, L3, U0, U1, U2, U3, U3b, U3c]
+      info: "Selects observation, see parrot-observation-sets.yml for list of observations"
+      default: L1
+    output-suffix:
+      dtype: str
+      default: '-qc2'
+    variant:
+      dtype: str
+      default: ''
+    dir.out: 
+      dtype: str
+    htc_cadence:
+      dtype: int
+      default: 1
+    htc_size:
+      dtype: int
+      default: 512
+    htc_scale:
+      dtype: str
+      default: '{recipe.pixel_scale}'
+    ampcal:
+      info: do a step of amplitude calibration
+      dtype: bool
+      default: false
+    convolve:
+      arcsec:
+        dtype: float
+        default: 0
+      time:
+        dtype: float
+        default: 120
+    convolve-sub:
+      arcsec:
+        dtype: float
+        default: 0
+      time:
+        dtype: float
+        default: 0
+    ddf-precluster-file: 
+      dtype: File
+    automask:
+      dtype: bool
+      default: false
+    mad_flag:
+      dtype: bool
+      default: false
+      aliases: 
+        - (quartical).mad_flags.enable
+    flag-on-residuals:
+      dtype: bool
+      default: false
+    copy-model-columns:
+      dtype: bool
+      default: true
+
+  aliases:
+    ms:
+      - (wsclean).ms
+      - (quartical).input_ms.path
+    weight: 
+      - (wsclean).weight
+      - (wsclean_pol).weight
+    minuv-l:
+      - (wsclean).minuv-l
+    taper-inner-tukey:
+      - (wsclean).taper-inner-tukey
+    
+  steps:
+    flagreset:
+      cab: flagman
+      params:
+        ms: =recipe.ms
+        mode: restore
+        versionname: =recipe.initial-flag-version
+      skip: false
+  
+    image-1:
+      info: "auto-masked deep I clean"
+      _use: lib.steps.wsclean.rrat
+      params:
+        column: DATA
+        niter: 150000
+        fits-mask: =IF(recipe.automask, UNSET, recipe.deep-mask-1)
+        auto-threshold: 2
+
+    mask-1:
+      recipe: make_masks
+      params:
+        restored_image: "{previous.restored-mfs}"
+        prefix: "{previous.prefix}"
+
+    flagsummary-1:
+      cab: flagsummary
+      params:
+        ms: =recipe.ms
+        spw: =recipe.casa-spw      
+
+    predict-1:
+      _use: lib.steps.wsclean.predict
+      params:
+        ms: '{recipe.ms}'
+        prefix: '{steps.image-1.prefix}'
+        nchan: '{steps.image-1.nchan}'
+
+    selfcal-2: 
+      _use: lib.steps.quartical.k
+
+    flagsummary-2:
+      cab: flagsummary
+      params:
+        ms: =recipe.ms
+        spw: =recipe.casa-spw      
+
+    image-2:
+      _use: lib.steps.wsclean.rrat
+      params:
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-1.mask)
+        auto-threshold: 1
+
+    mask-2:
+      recipe: make_masks
+      params:
+        restored_image: "{previous.restored-mfs}"
+        prefix: "{previous.prefix}"
+        threshold: 5
+
+    dd_predict-2:
+      cab: crystalball
+      info: "Predicts off-axis source into separate column"
+      params:
+        ms: '{recipe.ms}'
+        within: dd-problem-source.reg
+        output_column: DIR1_DATA
+        num_sources: 1000
+        sky_model: "{steps.image-2.source-list}"
+
+    upsample-2:
+      cab: smops
+      params:
+        ms: =recipe.ms
+        input-prefix: =recipe.image-prefix
+        num-threads: =root.ncpu
+        channels-out: 256
+        polynomial-order: 4
+        output-prefix: "{recipe.image-prefix}-upsampled"
+
+    # upsample-fix-2:
+    #   recipe: upsample-fix
+    #   params:
+    #     files: =GLOB("{recipe.image-prefix}-upsampled*model*fits")
+
+    predict-2:
+      _use: lib.steps.wsclean.predict
+      params:
+        ms: '{recipe.ms}'
+        prefix: '{steps.upsample-2.output-prefix}'
+        nchan: '{steps.upsample-2.channels-out}'
+
+    predict-copycol-3:
+      skip: =not recipe.copy-model-columns
+      cab: msutils.copycol
+      params:
+        msname: =recipe.ms
+        fromcol: MODEL_DATA
+        tocol: MODEL{info.suffix}_DATA
+
+    dd_selfcal-3:
+      _use: lib.steps.quartical.k-de
+      params:
+        output:
+          subtract_directions: [1]
+
+    ddcc_selfcal-3:
+      cab: cubical
+      params:
+        parset: cc-parsets/solve-kde.parset
+        data.ms: "{recipe.ms}"
+        out.dir: '{recipe.dir-out}/solve-kde'
+        out.name: cc-kde
+        model.list: MODEL{info.suffix}_DATA:DIR1_DATA
+        out.column: SELFCAL3_DATA
+        dist.ncpu: 12
+      skip: true
+
+    image-3:
+      _use: lib.steps.wsclean.rrat
+      params:
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.mask)
+        auto-threshold: 1
+
+    cube-3:
+      cab: stack_freq_cube
+      params:
+        images: =steps.image-*.restored
+        cube: "{recipe.image-prefix}-cube.fits"
+
+    fft-image-3:
+      cab: fft-image
+      params:
+        image: =steps.image-*.residual-mfs
+        fft-image: =STRIPEXT(steps.image-*.residual-mfs) + ".fft.fits"
+        lambda-per-arcsec: 100
+
+    mask-3:
+      recipe: make_masks
+      params:
+        restored_image: "{steps.image-3.restored-mfs}"
+        prefix: "{steps.image-3.prefix}"
+        threshold: 5
+
+    dd_selfcal-3a:
+      _use: lib.steps.quartical.k-g-de
+      params:
+        output:
+          subtract_directions: [1]
+      skip: =not recipe.ampcal
+
+    image-3a:
+      _use: lib.steps.wsclean.rrat
+      params:
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.mask)
+        auto-threshold: 1
+      skip: =not recipe.ampcal
+
+    mask-3a:
+      recipe: make_masks
+      params:
+        restored_image: "{previous.restored-mfs}"
+        prefix: "{previous.prefix}"
+      skip: =not recipe.ampcal
+
+    dd_selfcal-3b:
+      _use: lib.steps.quartical.k-g-de
+      params:
+        output:
+          subtract_directions: [1]
+      skip: =not recipe.ampcal
+
+    image-3b:
+      _use: lib.steps.wsclean.rrat
+      params:
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.mask)
+        auto-threshold: 1
+      skip: =not recipe.ampcal
+
+    flagsummary-3:
+      cab: flagsummary
+      params:
+        ms: =recipe.ms
+        spw: =recipe.casa-spw      
+
+    upsample-3:
+      cab: smops
+      params:
+        ms: =recipe.ms
+        input-prefix: =recipe.image-prefix
+        num-threads: =root.ncpu
+        channels-out: 256
+        polynomial-order: 4
+        output-prefix: "{recipe.image-prefix}-upsampled"
+
+    predict-3:
+      _use: lib.steps.wsclean.predict
+      params:
+        ms: '{recipe.ms}'
+        nchan: '{steps.upsample-3.channels-out}'
+        prefix: '{steps.upsample-3.output-prefix}'
+
+    predict-copycol-4:
+      skip: =not recipe.copy-model-columns
+      cab: msutils.copycol
+      params:
+        msname: =recipe.ms
+        fromcol: MODEL_DATA
+        tocol: MODEL{info.suffix}_DATA
+
+    dd_selfcal-4:
+      _use: lib.steps.quartical.k-de
+      params:
+        input_model:
+          recipe: MODEL{info.suffix}_DATA:DIR1_DATA
+        output:
+          subtract_directions: [0,1]
+
+    # apply-4:
+    #   _use: lib.steps.quartical.k-de
+    #   params:
+    #     input_model:
+    #       recipe: MODEL_DATA:DIR1_DATA  # model now has DIR1 subtracted
+    #     solver:
+    #       iter_recipe: [0,0]
+    #     K:
+    #       load_from: "{steps.dd_selfcal-3.output.gain_directory}/K"
+    #     dE:
+    #       load_from: "{steps.dd_selfcal-3.output.gain_directory}/dE"
+    #     output:
+    #       subtract_directions: [0,1]
+
+    flagres-4:
+      cab: tricolour
+      params:
+        ms: =recipe.ms
+        config: tricolour-strategies/khruschev.yaml
+        flagging-strategy: total_power
+        data-column: SELFCAL4_DATA
+      skip: =not recipe.flag-on-residuals
+
+    flagsummary-4:
+      cab: flagsummary
+      params:
+        ms: =recipe.ms
+        spw: =recipe.casa-spw      
+
+    image-4:
+      _use: lib.steps.wsclean.rrat
+      params:
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.mask)
+        auto-threshold: 1
+
+    fft-image-4:
+      cab: fft-image
+      params:
+        image: =previous.residual-mfs
+        fft-image: =STRIPEXT(steps.image-4.residual-mfs) + ".fft.fits"
+        lambda-per-arcsec: 100
+
+    compute-power-beam:
+      cab:  mdv-beams-to-power-beam
+      params:
+        mdv_beams: =recipe.mdv-beams
+        power_beam: =recipe.power-beam
+      skip_if_outputs: fresh
+
+    derive-obs-specific-power-beam:
+      cab: derive-power-beam
+      params:
+        cube: =steps.cube-3.cube
+        images: =steps.image-3.restored
+        outcube: =STRIPEXT(current.cube) + ".pbcorr.fits"
+        power_beam: =recipe.power-beam
+        beaminfo: "{steps.image-3.prefix}-powerbeam.p"
+        nband: 128
+      skip_if_outputs: fresh
+
+    source-catalog:
+      skip: true
+      cab: pybdsm
+      params:
+        image: =steps.image-3.restored-mfs
+        thresh_pix: 4
+        thresh_isl: 3
+        rms_box: [100,20]
+        rms_map: false
+        #flagging_opts: true
+        #flag_maxsize_bm: 10
+        catalog_format: ascii
+        outfile_gaul: =STRIPEXT(current.image) + '.gaul'
+        outfile_srl: =STRIPEXT(current.image) + '.srl'
+
+    source-catalog-spi:
+      _use: ratt-rrat.steps.source-catalog
+      params:
+        image: =steps.derive-obs-specific-power-beam.outcube
+        detection_image: =steps.image-3.restored-mfs
+        spectralindex_do: true
+        outfile_gaul: =STRIPEXT(current.image) + '.spi.gaul'
+        outfile_srl: =STRIPEXT(current.image) + '.spi.srl'
+
+    make-master-catalog:
+      tags: [master-catalog, never]
+      cab: make-master-catalog
+      params:
+        master_catalog: mastercat.ecsv
+        ra0: -57.594961deg
+        dec0: -20.446559deg
+        max_radius_deg: 1.5
+        catalogs: 
+          U: [U-band.gaul, 0, main]
+          L: [L-band.gaul, 6, main]
+          src_U: [U-band.srl, 6, srl]
+          src_L: [L-band.srl, 6, srl]
+          spi_U: [U-band.spi.gaul, 6, spi]
+          spi_L: [L-band.spi.gaul, 6, spi]
+        interesting_regions: [interests.reg, agn-candidates.reg, vlbi-calibrators.reg]
+        search_box_radec: [303.19deg, -20.492deg, 15arcsec, 40arcmin]
+        search_box_frame: geocentricmeanecliptic
+        search_box_label: PSR
+        search_box_minflux: 200uJy
+
+    augment-master-catalog:
+      tags: [master-catalog, never]
+      cab: augment-catalog
+      params:
+        catalog: mastercat.ecsv
+        augment_catalog: SourceList-MW.ecsv
+        augment_column: id
+        output_column: mwid
+        output_catalog: =current.catalog
+
+    save-ms-info:
+      cab: save-ms-info
+      params:
+        ms: =recipe.ms
+        ms-info-file: '{recipe.ms}.yml'
+      skip_if_outputs: exist
+
+    ms-info:
+      cab: load-ms-info
+      params:
+        ms-info-file: =steps.save-ms-info.ms-info-file
+
+    get-albus-info:
+      skip: true
+      cab: query-albus
+      params:
+        ms: =recipe.ms
+        output_dir: '{recipe.dir-out}/albus'
+
+    predict-5:
+      _use: lib.steps.wsclean.predict
+      params:
+        ms: '{recipe.ms}'
+        prefix: =steps.image-4.prefix
+        nchan: =steps.image-4.nchan
+
+    add-corrected-data:
+      cab: msutils.addcol
+      params:
+        msname: =recipe.ms
+        colname: CORRECTED_DATA
+
+    subtract_model:
+      cab: taql_update
+      params: 
+        ms: "{recipe.ms}"
+        commands: =LIST("set", "CORRECTED_DATA={steps.image-4.column}-MODEL_DATA")
+
+    image-4htc:
+      _use: lib.steps.wsclean.dirty
+      params:
+        column: CORRECTED_DATA
+        prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/images/cad{recipe.htc_cadence}'
+        intervals-out: =steps.ms-info.num_intervals / recipe.htc_cadence
+        nchan: 1
+        niter: 10000
+        auto-threshold: 1
+        threshold: 0
+        mgain: 1
+        size: '{recipe.htc_size}'
+        scale: '{recipe.htc_scale}'
+
+    image-5tf:
+      skip: true
+      _use: lib.steps.wsclean.dirty
+      params:
+        column: CORRECTED_DATA
+        prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/images/cad{recipe.htc_cadence}'
+        intervals-out: =steps.ms-info.num_intervals / recipe.htc_cadence
+        nchan: =recipe.htfc_nband
+        size: =recipe.htfc_size
+        scale: =recipe.htfc_scale
+
+    cube-4htc:
+      cab: stack_time_cube
+      params:
+        images: =steps.image-*htc.dirty-timeint
+        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube-{recipe.htc_cadence}-dirty.fits'
+        ms: =recipe.ms
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    clean-cube-4htc:
+      cab: stack_time_cube
+      params:
+        images: =steps.image-*htc.restored-timeint
+        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube-{recipe.htc_cadence}-clean.fits'
+        ms: =recipe.ms
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    extract-metadata:
+      cab: extract_fits_metadata
+      params:
+        images: =previous.images
+        timestamps_file: =STRIPEXT(previous.cube) + '.timestamps.p'
+        beams_file: =STRIPEXT(previous.cube) + '.beams.p'
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    cubes-5tf:
+      tags: [lightcurves-per-band, never]
+      recipe:
+        inputs:
+          bands: List[int] = =RANGE(recipe.htfc_nband)
+          prefix: str = =steps.image-5tf.prefix
+          cube-prefix: str = =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube'
+          lc-suffix: str = =recipe.lc-suffix
+        for_loop:
+          var: band
+          over: bands
+        steps:
+          stack:
+            cab: stack_time_cube
+            params:
+              images: =GLOB("{recipe.prefix}-t*-{recipe.band:04d}-image.fits")
+              cube: "{recipe.cube-prefix}{recipe.band:04d}.fits"
+              ms: =root.ms
+            skip_if_outputs: fresh
+          convolve:
+            cab: convolve_image
+            params:
+              image: =previous.cube
+              size_arcsec: =root.convolve.arcsec
+              size_sec: =root.convolve.time
+              outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix}.fits'
+            skip: =not recipe.lc-suffix 
+            skip_if_outputs: fresh
+
+    cube-convolve:
+      cab: convolve_image
+      params:
+        image: =steps.cube-4htc.cube
+        size_arcsec: =recipe.convolve.arcsec
+        size_sec: =recipe.convolve.time
+        outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix}.fits'
+      skip: =not recipe.lc-suffix 
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    cube-convolve-sub:
+      cab: convolve_image
+      params:
+        image: =steps.cube-4htc.cube
+        size_arcsec: =recipe.convolve-sub.arcsec
+        size_sec: =recipe.convolve-sub.time
+        outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix-sub}.fits'
+      skip: =not recipe.lc-suffix-sub
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    extract-lightcurves:
+      info: extracts lightcurves from convolved cube
+      skip: =not recipe.lc-suffix # skip if lc-suffix is not set: we don't make a convolved cube then
+      cab: extract_lightcurves
+      params:
+        cube: =IF(recipe.lc-suffix, steps.cube-convolve.outimage, steps.cube-4htc.cube)
+        outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}{recipe.lc-suffix}'
+        catalog: =steps.make-master-catalog.master_catalog
+        regfile: '{current.outdir}/lc{recipe.htc_cadence}-{recipe.obs}.reg'
+        statsfile: '{current.outdir}/lc{recipe.htc_cadence}-{recipe.obs}.stats.p'
+        interesting_timestamps: known-pulses.txt
+        output_file_label: "-{recipe.obs}"
+        srctype: P
+        minflux: 3uJy
+        flag_excess_std: 3
+        within: =recipe.lightcurves-within
+        nsrc: 50000
+        ncpu: =root.ncpu
+        # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
+        fluxcols: =recipe.catalog-flux-columns
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    extract-lightcurves-1:
+      info: extracts lightcurves from raw cube
+      _use: ratt-rrat.steps.extract-lightcurves
+      skip: false
+      params:
+        cube: =steps.cube-4htc.cube
+        outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}'
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    extract-lightcurves-1c:
+      _use: ratt-rrat.steps.extract-lightcurves-1
+      params:
+        cube: =steps.clean-cube-4htc.cube
+        outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}-clean'
+
+    extract-lightcurves-per-band:
+      info: extracts per-band lightcurves using the cubes-5tf output
+      tags: [lightcurves-per-band, never]
+      recipe:
+        inputs:
+          bands: List[int] = =RANGE(recipe.htfc_nband)
+          cube-prefix: str = =steps.cubes-5tf.cube-prefix
+          dir-out: str = =recipe.dir-out
+          catalog: str = =steps.make-master-catalog.master_catalog
+          obs: str = =recipe.obs
+          htc_cadence: int = =recipe.htc_cadence
+          lightcurves-within: str = =recipe.lightcurves-within
+          catalog-flux-columns: List[str] = =recipe.catalog-flux-columns
+          lc-suffix: str = =recipe.lc-suffix
+          nsrc: int = 100  "limit number of sources for now to 100"
+        for_loop:
+          var: band
+          over: bands
+        steps:
+          lc1:
+            _use: ratt-rrat.steps.extract-lightcurves
+            params:
+              cube: '{recipe.cube-prefix}{recipe.band:04d}.fits'
+              outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}-perband/band{recipe.band:04d}'
+              catalog: =recipe.catalog
+              nsrc: =recipe.nsrc
+          lc2:
+            _use: ratt-rrat.steps.extract-lightcurves
+            params:
+              cube: '{recipe.cube-prefix}{recipe.band:04d}{recipe.lc-suffix}.fits'
+              outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}{recipe.lc-suffix}-perband/band{recipe.band:04d}'
+              catalog: =recipe.catalog
+              nsrc: =recipe.nsrc
+
+    extract-model-fluxes:
+      skip: true
+      cab: extract-model-spectrum
+      params:
+        lightcurves: =GLOB("{steps.extract-lightcurves-1.outdir}/src-chunk*/src000000*.ecsv")
+        modelsets: =LIST(GLOB("{steps.predict-3.prefix}-????-model.fits"),
+                         GLOB("{steps.predict-5.prefix}-????-model.fits"))
+  
+    extract-lightcurves-base:
+      _use: ratt-rrat.steps.extract-lightcurves
+      params:
+        cube: =steps.cube-convolve-sub.outimage
+        outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}{recipe.lc-suffix-sub}'
+      skip: =not recipe.lc-suffix-sub
+      skip_if_outputs: fresh
+
+    extract-lightcurves-sub:
+      _use: ratt-rrat.steps.extract-lightcurves
+      params:
+        cube: =steps.extract-lightcurves.cube
+        outdir: '{steps.extract-lightcurves.outdir}-sub{recipe.lc-suffix-sub}'
+        subtract: '{steps.extract-lightcurves-base.outdir}'
+      skip: =not recipe.lc-suffix-sub
+      skip_if_outputs: fresh
+        
