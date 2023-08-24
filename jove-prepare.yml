@@ -1,0 +1,77 @@
+#!/usr/bin/env -S stimela run
+_include:
+  - jove-cabs.yml
+
+## this augments the standard 'opts' config section to tweak logging settings
+opts:
+  log:
+    dir: logs/log-{config.run.datetime}
+    name: log-{info.fqname}
+    nest: 2
+    symlink: log
+
+## 'jove' is not a standard config section, therefore stimela exec treats this as a recipe definition
+jove-prepare:
+  name: "Jove prepare MS"
+  info: "Splits and corrects per-scan MSs"
+
+  inputs:
+    _include: jove-defaults.yml
+    scan:
+      dtype: int
+    initial-flag-version:
+      default: init
+    dir-out:
+      default: '{recipe.dir-out-base}/s{recipe.scan:02d}'
+    fix-dir:
+      dtype: bool
+      default: true
+    fix-uvw:
+      dtype: bool
+      default: false
+  outputs:
+    ms:
+      dtype: MS
+      default: '{recipe.ms-base}-scan{recipe.scan:02d}.ms'
+
+  assign:
+    log.dir: '{recipe.dir-out}/logs/log-{config.run.datetime}'          # put logs into output dir
+    # some more directory assignments
+    dirs:
+      temp: "{config.run.env.HOME}/tmp"   # temp files go here
+    
+  steps:
+    split:
+      info: split out per-scan MS, should in pricniple just run once (see skip attribute)
+      cab: casa.split.scan
+      params:
+        source-ms: =recipe.source-ms
+        scan: =recipe.scan
+        ms: =recipe.ms
+      skip: =EXISTS(recipe.ms)
+    
+    fix-ms-direction:
+      info: update FIELD table for Jove direction mid-scan
+      cab: fix-ms-direction
+      params:
+        ms: =recipe.ms
+        body: Jupiter
+      skip: =EXISTS("{recipe.ms}.flagversions") or not recipe.fix-dir
+
+    # NB: not necessary? MeerKAT already has correct UVWs
+    fix-uvw-coordinates:
+      info: recompute UVWs for correct direction
+      cab: casa.fixuvw
+      params:
+        ms: =recipe.ms
+      skip: =EXISTS("{recipe.ms}.flagversions") or not recipe.fix-uvw
+
+    flagsave-init:
+      info: save initial flag version after splitting, should in pricniple just run once (see skip attribute)
+      cab: flagman
+      params:
+        ms: =recipe.ms
+        mode: save
+        versionname: =recipe.initial-flag-version
+      skip: =EXISTS("{recipe.ms}.flagversions")
+

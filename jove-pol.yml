@@ -1,0 +1,596 @@
+#!/usr/bin/env -S stimela run --last-recipe
+_include:
+  - jove-cabs.yml
+
+## this augments the standard 'opts' config section to tweak logging settings
+opts:
+  log:
+    dir: logs/log-{config.run.datetime}
+    name: log-{info.fqname}
+    nest: 2
+    symlink: log
+  rlimits:
+    NOFILE: 100000  # set high limit on number of open files
+
+## 'jove' is not a standard config section, therefore stimela exec treats this as a recipe definition
+jove-pol4:
+  name: "Jove IQUV"
+  info: "makes images with 1GC/DDCal for one scan, in full Stokes"
+
+  inputs:
+    _include: jove-defaults.yml
+    ms:
+      dtype: MS
+      default: '{recipe.ms-base}-scan{recipe.scan:02d}.ms'
+      aliases: ['*.ms']
+      must_exist: false
+    scan:
+      dtype: int
+    suffix:
+      dtype: str
+      default: '-s{recipe.scan:02d}'
+    dd_sol_type:
+      dtype: str
+      choices: [kk, kk1, kk2, kde, kkde, kkde2, gde, g, de, kde-2slope]
+      default: kde
+    copy-model-columns:
+      dtype: bool
+      default: true
+    initial-flag-version:
+      default: init
+    dir-out:
+      default: '{recipe.dir-out-base}/s{recipe.scan:02d}'
+    stokes:
+      default: IQUV
+    pa-rotate:
+      dtype: bool
+      default: true
+    mad-flag:
+      info: enable the QuartiCal MAD residual flagger
+      dtype: bool
+      default: true
+    inner-taper:
+      enable:
+        info: enables an inner uv-cut to attenuate solar RFI
+        dtype: bool
+        default: true
+      cut: 
+        info: inner uv-cut, in lambdas
+        dtype: float
+        default: 300  
+      taper: 
+        info: additional inner tukey taper, in lambdas
+        dtype: float
+        default: 100
+    ncpu:
+      default: 64
+    upsample-channels:
+      dtype: Optional[int]
+      default: 0
+    htc_cadence:
+      dtype: int
+      default: 1
+    htc_size:
+      dtype: int
+      default: 3072
+    htc_scale:
+      dtype: str
+      default: 2.4arcsec
+
+  assign:
+    image-prefix: '{recipe.dir-out}/im{info.suffix}/im{info.suffix}{recipe.suffix}'  # prefix for image names at each step
+    log.dir: '{recipe.dir-out}/logs/log-{config.run.datetime}'          # put logs into output dir
+    # some more directory assignments
+    dirs:
+      temp: "{config.run.env.HOME}/tmp"   # temp files go here
+    
+    # prefix used for filenames if upsampling is in effect
+    upsample-suffix: =IF(recipe.upsample-channels, "-us{recipe.upsample-channels}", "")
+    image-upsample-prefix: '{recipe.dir-out}/im{info.suffix}{recipe.upsample-suffix}/im{info.suffix}{recipe.upsample-suffix}{recipe.suffix}'  
+    
+    # work out baseline calibration uv-cut
+    # this is the total imaging inner taper in metres (0.33 is wavelength at 900 MHz)
+    imaging-uv-cut: 
+      =IF(recipe.inner-taper.enable, (recipe.inner-taper.cut + recipe.inner-taper.taper)*0.33, 0)
+    # apply baseline uv-cut of at least 100m, or equal to the imaging uv-cut
+    baseline-cal-cut: =MAX(recipe.imaging-uv-cut, 100)
+    
+  steps:
+    # prepare:
+    #   recipe: jove-prepare-ms
+    #   params:
+    #     source-ms: =recipe.source-ms
+    #     dir-out-base: =recipe.sir-out-base
+    #     scan: =recipe.scan
+    #     initial-flag-version: =recipe.initial-flag-version
+    #   skip: =EXISTS(recipe.ms)
+
+    flagreset:
+      info: revert to initial flag version at start of processing
+      cab: flagman
+      params:
+        mode: restore
+        versionname: =recipe.initial-flag-version
+
+    derotate-1:
+      _use: lib.steps.cubical.delay
+      params:
+        madmax.enable: 0
+        madmax.residuals: 0
+        model.list: 1
+        out.mode: ac
+        out.column: CORRECTED_DATA
+        log.verbose: pa_machine=2
+      skip: =not recipe.pa-rotate
+
+    image-1:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        pol: IQ
+        column: =IF(recipe.pa-rotate, steps.derotate-1.out.column, "DATA")
+
+    mask-1:
+      cab: breizorro
+      params:
+        restored_image: =steps.image-*.restored-mfs-i
+        mask: '{steps.image-*.prefix}-mask.fits'
+        threshold: 10
+        dilate: 5
+
+    predict-1:
+      skip: true      # skip by default, only run explicitly with -s
+      _use: lib.steps.wsclean.predict_pol
+      params:
+        prefix: "{steps.image-*.prefix}"
+        pol: IQ
+
+    selfcal-1:
+      _use: lib.steps.cubical.delay
+      params:
+        model.list: MODEL_DATA
+
+    image-2:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        column: "{steps.selfcal-*.out.column}"
+        fits-mask: "{steps.mask-*.mask}"
+        niter: 100000
+        pol: IQ
+
+    mask-2:
+      cab: breizorro
+      params:
+        restored_image: =steps.image-*.restored-mfs-i
+        mask: '{steps.image-*.prefix}-mask.fits'
+
+    selfcal-2:
+      _use: lib.steps.cubical.delay
+      params:
+        model.list: MODEL_DATA
+
+    image-3:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        column: "{steps.selfcal-*.out.column}"
+        fits-mask: "{steps.mask-*.mask}"
+        niter: 100000
+        no-update-model-required: true
+        pol: IQ
+
+    mask-3:
+      cab: breizorro
+      params:
+        restored_image: =steps.image-*.restored-mfs-i
+        mask: '{steps.image-*.prefix}-mask.fits'
+
+    upsample-3:
+      cab: smops
+      skip: =not recipe.upsample-channels
+      params:
+        ms: =recipe.ms
+        input-prefix: =recipe.image-prefix
+        num-threads: =recipe.ncpu
+        stokes: =recipe.stokes
+        channels-out: =recipe.upsample-channels
+        polynomial-order: 4
+        output-prefix: "{recipe.image-upsample-prefix}-upsampled/im{info.suffix}"
+
+    predict-3:
+      _use: lib.steps.wsclean.predict_pol
+      params:
+        prefix: =IF(recipe.upsample-channels, steps.upsample-*.output-prefix, steps.image-*.prefix)
+        nchan: =IF(recipe.upsample-channels, steps.upsample-*.channels-out, steps.image-*.nchan)
+        pol: IQ
+
+    predict-copycol-3:
+      skip: =not recipe.copy-model-columns
+      cab: msutils.copycol
+      params:
+        msname: =recipe.ms
+        fromcol: MODEL_DATA
+        tocol: =IF(recipe.upsample-channels, 'MODEL{info.suffix}_{recipe.upsample-channels}_DATA', 'MODEL{info.suffix}_DATA')
+
+    selfcal-3:
+      _use: lib.steps.cubical.delay
+      params:
+        model.list: =steps.predict-copycol-*.tocol
+
+    image-4:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: =steps.selfcal-*.out.column
+        fits-mask: =steps.mask-*.mask
+        niter: 100000
+
+    fft-residual-4:
+      recipe: fft-image-list
+      params:
+        image-list: =steps.image-*.residual-mfs
+
+    mask-4:
+      cab: breizorro
+      params:
+        restored_image: =steps.image-*.restored-mfs-i
+        mask: '{steps.image-*.prefix}-mask.fits'
+
+    norrat-mask-4:
+      cab: breizorro
+      info: "makes mask which contains everything except the RRAT"
+      params:
+        mask_image: '{steps.mask-*.mask}'
+        number_islands: true
+        remove_islands: ['302.404041deg,-20.446395deg']
+        ignore_missing_islands: true
+        mask: '{steps.image-*.prefix}-mask-norrat.fits'
+
+    ms-image-4ms:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: =steps.selfcal-*.out.column
+        fits-mask: =steps.mask-*.mask
+        multiscale: true
+        niter: 100000
+      skip: true
+
+    unpol-image-4:
+      _use: lib.steps.wsclean.image
+      info: "Deconvolves a Stokes I image and makes a source list for the DD predict below"
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: =steps.selfcal-*.out.column
+        fits-mask: "{steps.mask-*.mask}"
+        save-source-list: true
+        no-update-model-required: true
+        niter: 100000
+
+    dd_predict-4:
+      cab: crystalball
+      info: "Predicts off-axis source into separate column"
+      # skip: true      # skip by default, only run explicitly with -s
+      params:
+        ms: =recipe.ms
+        within: dd.reg
+        output_column: DIR1_DATA
+        num_sources: 1000
+        sky_model: "{steps.unpol-image-*.source-list}"
+
+    upsample-4:
+      cab: smops
+      skip: =not recipe.upsample-channels
+      params:
+        ms: =recipe.ms
+        input-prefix: =recipe.image-upsample-prefix
+        num-threads: =recipe.ncpu
+        stokes: =recipe.stokes
+        channels-out: =recipe.upsample-channels
+        polynomial-order: 4
+        output-prefix: "{recipe.image-upsample-prefix}-upsampled/im{info.suffix}"
+
+    predict-4:
+      _use: lib.steps.wsclean.predict_pol
+      params:
+        prefix: =IF(recipe.upsample-channels, steps.upsample-*.output-prefix, steps.image-*.prefix)
+        nchan: =IF(recipe.upsample-channels, steps.upsample-*.channels-out, steps.image-*.nchan)
+
+    predict-copycol-4:
+      skip: =not recipe.copy-model-columns
+      cab: msutils.copycol
+      params:
+        msname: =recipe.ms
+        fromcol: MODEL_DATA
+        tocol: =IF(recipe.upsample-channels, 'MODEL{info.suffix}_{recipe.upsample-channels}_DATA', 'MODEL{info.suffix}_DATA')
+
+    dd_selfcal-4:
+      _use: lib.steps.cubical.delay
+      params:
+        parset: cc-parsets/solve-{recipe.dd_sol_type}.parset
+        out.dir: '{recipe.dir-out}/solve-{recipe.dd_sol_type}'
+        out.name: cc
+        model.list: '{steps.predict-copycol-*.tocol}+-DIR1_DATA:DIR1_DATA'
+
+    unpol-image-5:
+      _use: lib.steps.wsclean.image
+      info: "Deconvolves a Stokes I image and makes a source list for the DD predict below"
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: =steps.dd_selfcal-*.out.column
+        fits-mask: "{steps.mask-*.mask}"
+        save-source-list: true
+        no-update-model-required: true
+        niter: 100000
+
+    image-5:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: "{steps.dd_selfcal-*.out.column}"
+        fits-mask: "{steps.norrat-mask-*.mask}"
+        intervals-out: 4
+        niter: 100000
+
+    mean-cubes-5:
+      _use: lib.steps.mean-cubes
+
+    predict-copycol-5:
+      skip: =not recipe.copy-model-columns
+      cab: msutils.copycol
+      params:
+        msname: =recipe.ms
+        fromcol: MODEL_DATA
+        tocol: =IF(recipe.upsample-channels, 'MODEL{info.suffix}_{recipe.upsample-channels}_DATA', 'MODEL{info.suffix}_DATA')
+
+    add-residual-data-column:
+      cab: msutils.addcol
+      params:
+        msname: =recipe.ms
+        colname: RESIDUAL_DATA
+
+    make-residual-data:
+      cab: taql_update
+      params: 
+        ms: "{recipe.ms}"
+        commands: =LIST("set", "RESIDUAL_DATA={steps.image-*.column}-MODEL_DATA")
+
+    saveflags-5:
+      cab: flagman
+      params:
+        ms: =recipe.ms
+        mode: save
+        versionname: flags_{info.suffix}
+
+    flagsummary-5:
+      cab: flagsummary
+      params:
+        ms: =recipe.ms
+
+    res-image-5res:
+      info: make dirty image of residuals, for diagnostics
+      _use: lib.steps.wsclean.image_pol
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: RESIDUAL_DATA
+        niter: 0
+        nchan: 1
+        join-channels: =UNSET
+
+    fft-image-5res:
+      cab: fft-image
+      params:
+        image: =steps.res-image-*.dirty.v
+        fft-image: =STRIPEXT(current.image) + ".fft.fits"
+        lambda-per-arcsec: 100
+
+    flagres-6:
+      cab: tricolour
+      params:
+        ms: =recipe.ms
+        config: tricolour-strategies/stalin.yaml
+        flagging-strategy: polarisation
+        data-column: RESIDUAL_DATA
+
+    flagsummary-6:
+      cab: flagsummary
+      params:
+        ms: =recipe.ms
+
+    res-image-6res:
+      info: make dirty image of residuals, for diagnostics
+      _use: lib.steps.wsclean.image_pol
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: RESIDUAL_DATA
+        niter: 0
+        nchan: 1
+        join-channels: =UNSET
+
+    fft-image-6res:
+      cab: fft-image
+      params:
+        image: =steps.res-image-*.dirty.v
+        fft-image: =STRIPEXT(current.image) + ".fft.fits"
+        lambda-per-arcsec: 100
+
+    dd_predict-7:
+      cab: crystalball
+      info: "Predicts off-axis source into separate column"
+      # skip: true      # skip by default, only run explicitly with -s
+      params:
+        ms: =recipe.ms
+        within: dd.reg
+        output_column: DIR1A_DATA
+        num_sources: 1000
+        sky_model: "{steps.unpol-image-*.source-list}"
+
+    dd_selfcal-7:
+      _use: lib.steps.cubical.delay
+      params:
+        parset: cc-parsets/solve-{recipe.dd_sol_type}.parset
+        out.dir: '{recipe.dir-out}/solve-{recipe.dd_sol_type}'
+        out.name: cc
+        model.list: '{steps.predict-copycol-*.tocol}+-DIR1A_DATA:DIR1_DATA+DIR1A_DATA'
+        flags.apply: FLAG  # apply new flags
+
+    image-7:
+      _use: lib.steps.wsclean.image_pol
+      params:
+        prefix: =recipe.image-upsample-prefix
+        column: "{steps.dd_selfcal-*.out.column}"
+        fits-mask: "{steps.norrat-mask-*.mask}"
+        intervals-out: 4
+        niter: 100000
+
+    mean-cubes-7:
+      _use: lib.steps.mean-cubes
+
+    add-corrected-data:
+      info: ensure CORRECTED_DATA column exists
+      cab: msutils.addcol
+      params:
+        msname: =recipe.ms
+        colname: CORRECTED_DATA
+
+    subtract-model:
+      info: populate CORRECTED_DATA column with residuals from last imaging step
+      cab: taql_update
+      params: 
+        ms: "{recipe.ms}"
+        commands: =LIST("set", "CORRECTED_DATA={steps.image-*.column}-MODEL_DATA")
+    
+    save-ms-info:
+      info: extract MS metadata and save it for later use
+      cab: save-ms-info
+      params:
+        ms: =recipe.ms
+        ms-info-file: '{recipe.ms}.yml'
+      skip_if_outputs: exist # only need to run once
+
+    ms-info:
+      info: load MS metadata
+      cab: load-ms-info
+      params:
+        ms-info-file: =steps.save-ms-info.ms-info-file
+
+    image-8htc:
+      info: make single-timeslot dirty images
+      _use: lib.steps.wsclean.dirty
+      params:
+        column: CORRECTED_DATA
+        prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/images/cad{recipe.htc_cadence}'
+        intervals-out: =steps.ms-info.num_intervals / recipe.htc_cadence
+        nchan: 1
+        size: '{recipe.htc_size}'
+        scale: '{recipe.htc_scale}'
+
+    # mask5a:
+    #   cab: breizorro
+    #   skip: true
+    #   info: "makes mask which is 1 everywhere except at the dwarf"
+    #   params:
+    #     mask_image: '{steps.mask3.mask}'
+    #     mask: '{steps.image5.prefix}-multiplicative-mask.fits'
+    #     number_islands: true
+    #     extract_islands: ['302.404041deg,-20.446395deg']
+    #     invert: true
+
+    # predict_6:
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   info: "Re-runs predict from DI step 4 using Stokes IQ only"
+    #   _use: lib.steps.wsclean.predict_pol
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: "{recipe.dir_out}/im5masked/s{recipe.scan}/im5{recipe.suffix}-int-s{recipe.scan}-{recipe.dd_sol_type}"
+    #     intervals_out: 4
+
+    # image5nopol:
+    #   _use: lib.steps.wsclean.image
+    #   skip: true
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: '{recipe.dir_out}/im5check/s{recipe.scan}/im5{recipe.suffix}-int-s{recipe.scan}-{recipe.dd_sol_type}'
+    #     column: "{steps.dd_selfcal1a.out_column}"
+    #     fits_mask: "{steps.mask3.mask}"
+    #     intervals_out: 4
+    #     niter: 100000
+    #     no_update_model_required: true
+
+    # dd_predict6:
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   _use: lib.steps.wsclean.predict_pol
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: "{steps.image5.prefix}"
+    #     intervals_out: 4
+
+    # dd_selfcal6:
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   cab: cubical
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     parset: cc-parsets/solve-{recipe.dd_sol_type}.parset
+    #     out_dir: '{recipe.dir_out}/solve-{recipe.dd_sol_type}'
+    #     out_name: cc-s{recipe.scan}
+    #     model_list: MODEL_DATA:DIR1_DATA
+    #     out_column: CORRECTED_DD1_DATA
+
+    # image6:
+    #   _use: lib.steps.wsclean.image_pol
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: '{recipe.dir_out}/im6/s{recipe.scan}/im6{recipe.suffix}-int-s{recipe.scan}-{recipe.dd_sol_type}'
+    #     column: "{previous.out_column}"
+    #     fits_mask: "{steps.mask3.mask}"
+    #     intervals_out: 4
+    #     niter: 100000
+    #     no_update_model_required: true
+
+    # selfcal_res:
+    #   skip: true
+    #   cab: cubical
+    #   params:
+    #     ms: "{previous.ms}"
+    #     parset: solve-{recipe.sol_type}.parset
+    #     out_dir: solve-{recipe.sol_type}-res
+    #     out_name: cc-s{recipe.scan}-k{recipe.sol_k_tint}-{recipe.sol_k_fint}
+    #     out_subtract_dirs: ':'
+
+    # image_res:
+    #   skip: true
+    #   _use: lib.steps.wsclean.image
+    #   params:
+    #     ms: "{previous.ms}"
+    #     prefix: 'img2/im2res{recipe.suffix}-s{recipe.scan}-{recipe.sol_type}-k{recipe.sol_k_tint}-{recipe.sol_k_fint}'
+    #     column: CORRECTED_DATA
+    #     niter: 5000
+    #     no_update_model_required: true
+
+    ## from step 4
+
+    # di_predict4:
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   info: "Re-runs predict from DI step 4"
+    #   _use: lib.steps.wsclean.predict_pol
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: "{steps.image4.prefix}"
+
+    # di_predict_iq:
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   info: "Re-runs predict from DI step 4 using Stokes IQ only"
+    #   _use: lib.steps.wsclean.predict_pol2
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: "{steps.image4.prefix}"
+    #     pol: IQ
+
+    # di_predict_iq_old:
+    #   skip: true      # skip by default, only run explicitly with -s
+    #   info: "Re-runs predict from DI step 4 using Stokes IQ only"
+    #   _use: lib.steps.wsclean.predict_pol2
+    #   params:
+    #     ms: "{steps.image.ms}"
+    #     prefix: '{recipe.dir_out}/im5prev/s{recipe.scan}/im5{recipe.suffix}-int-s{recipe.scan}-kde'
+    #     intervals_out: 4
+    #     pol: IQ

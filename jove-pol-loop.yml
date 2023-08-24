@@ -1,0 +1,40 @@
+#!/usr/bin/env -S stimela run --last-recipe
+_include:
+  - jove-pol.yml
+  - jove-prepare.yml
+
+
+# increase image size by 800 to catch two bright sources wandering in (left and top)
+
+jove-pol-loop:
+  name: "Jove IQUV scan loop"
+  info: "makes images with 1GC/DDCal for a series of scans, in full Stokes"
+
+  for_loop:
+    var: scan
+    over: scan-list
+    display_status: "{var}={value} {index1}/{total}"
+
+  inputs:
+    _include: jove-defaults.yml
+    scan-list:
+      dtype: List[int]
+      default: [ 4, 6, 8, 11, 13, 15, 18, 20, 22, 24, 27, 29, 31, 34, # ran
+               36, 38, 41, 43, 45, 48, 50, 52, 55, 57, 59, 61, # ran
+               64, 65 ] # still to run
+
+  steps:
+    jove-prepare:
+      recipe: jove-prepare
+      params:
+        source-ms: =recipe.source-ms
+        ms-base: =recipe.ms-base
+        dir-out-base: =recipe.dir-out-base
+        scan: =recipe.scan
+
+    jove-pol:
+      recipe: jove-pol4
+      params:
+        ms-base: =recipe.ms-base
+        dir-out-base: =recipe.dir-out-base
+        scan: =recipe.scan

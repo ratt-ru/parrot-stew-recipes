@@ -1,0 +1,6 @@
+ms-base:
+  default: ../msdir/1608538564_sdp_l0-Jupiter-corr-norot
+source-ms:
+  default: ../msdir/1608538564_sdp_l0-Jupiter-corr-norot.ms
+dir-out-base:
+  default: obs-jove5-cc

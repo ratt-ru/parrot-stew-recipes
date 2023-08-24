@@ -1,0 +1,351 @@
+_include:
+  - omstimelation/oms-cabs.yml
+  - omstimelation/oms-ddf-cabs.yml
+
+cabs:
+  fix-ms-direction:
+    info: gets direction of given solar system body for mid-point of MS
+    inputs:
+      ms:
+        dtype: MS
+        required: true
+      body:
+        dtype: str
+        required: true
+    flavour: python-code
+    command: |
+      import sys
+      import casacore.measures
+      import casacore.quanta 
+      from casacore.tables import table
+      dm = casacore.measures.measures() 
+      dq = casacore.quanta
+      newdir = dm.direction(body)
+      tab = table(ms, readonly=False)
+      t = tab.getcol("TIME")
+      t0 = (t.min() + t.max())/2
+      ep = dm.epoch('utc', dq.quantity(t0, 's'))
+      dm.do_frame(ep)
+      radec = dm.measure(newdir, 'J2000')
+      ra = dm.get_value(radec)[0].get_value('rad')
+      dec = dm.get_value(radec)[1].get_value('rad')
+      print(f"time {t0} {body} ra {ra} dec {dec}")
+      ftab = table(f"{ms}::FIELD", readonly=False)
+      for colname in 'DELAY_DIR', 'PHASE_DIR', 'REFERENCE_DIR':
+          col = ftab.getcol(colname)
+          print(col)
+          col[0,0,0] = ra
+          col[0,0,1] = dec
+          ftab.putcol(colname, col)
+          print(colname, col)
+
+  casa.fixuvw:
+    flavour: casa-task
+    command: fixvis
+    inputs:
+      ms: 
+        dtype: MS
+        required: true
+        nom_de_guerre: vis
+      reuse:
+        dtype: bool
+        implicit: false
+    outputs:
+      outputvis:
+        implicit: '{current.ms}'
+
+  casa.split.scan:
+    command: split
+    flavour: casa-task
+    inputs:
+      source-ms:
+        dtype: MS
+        required: true
+        nom_de_guerre: vis
+      scan:
+        dtype: str
+      datacolumn:
+        default: data
+    outputs:
+      ms:
+        dtype: MS
+        required: true
+        nom_de_guerre: outputvis
+
+  weighted-mean-image:
+    info: 
+      computes the mean of a series of FITS images, using inverse variance weighting
+    inputs:
+      images: 
+        dtype: List[File]
+      residuals: 
+        dtype: List[File]
+      exclude_center:
+        info: exclude a box of this size at the image centre when computing variance
+        dtype: int
+        default: 1000
+    outputs:
+      output_image: 
+        dtype: File
+      output_residual: 
+        dtype: File
+    flavour: python-code
+    command: |
+        from astropy.io import fits
+        import numpy as np
+        from numpy.ma import masked_array
+        ffs = [fits.open(path) for path in images]
+        ims = [ff[0].data for ff in ffs]
+        rffs = [fits.open(path) for path in residuals]
+        rims = rims_masked = [ff[0].data for ff in rffs]
+        if exclude_center:
+          mask = np.zeros_like(ims[0], bool)
+          i0 = mask.shape[-1]//2 - exclude_center//2
+          i1 = mask.shape[-1]//2 + exclude_center//2
+          j0 = mask.shape[-2]//2 - exclude_center//2
+          j1 = mask.shape[-2]//2 + exclude_center//2
+          mask[..., j0:j1, i0:i1] = True
+          rims_masked = [masked_array(im, mask) for im in rims]
+        istds = [1/im.std() for im in rims_masked]
+        print(f"Inverse residual variances are {istds}")
+        mean = sum([im*istd for (im, istd) in zip(ims, istds)]) / sum(istds)
+        rmean = sum([im*istd for (im, istd) in zip(rims, istds)]) / sum(istds)
+        ffs[0][0].data = mean.data
+        ffs[0].writeto(output_image, overwrite=True) 
+        print(f"Wrote mean image to {output_image}")
+        ffs[0][0].data = rmean.data
+        ffs[0].writeto(output_residual, overwrite=True) 
+        print(f"Wrote mean residual to {output_residual}")
+
+  save-ms-info:
+    flavour: python-code
+    name: save-ms-info
+    command: |
+      from omegaconf import OmegaConf
+      import casacore.tables
+      tab = casacore.tables.table(ms)
+      info = OmegaConf.create()
+      info.num_intervals = len(set(tab.getcol("TIME")))
+      info.intervals = sorted(map(float, set(tab.getcol("INTERVAL"))))
+      print(f"MS has {info.num_intervals} timeslots of interval {info.intervals}")
+      info.total = [i*info.num_intervals/3600. for i in info.intervals]
+      print(f"Total synthesis time is {info.total}h")
+      OmegaConf.save(info, ms_info_file)
+    inputs:
+      ms: 
+        dtype: MS
+    outputs:
+      ms-info-file:
+        dtype: File
+
+  load-ms-info:
+    flavour: python-code
+    command: |
+      from omegaconf import OmegaConf
+      info = OmegaConf.load(ms_info_file)
+      num_intervals = info.num_intervals
+    inputs:
+      ms-info-file: 
+        dtype: File
+    outputs:
+      num_intervals:
+        dtype: int
+
+
+lib:
+  recipes:
+    fft-image-list:
+      inputs:
+        image-list:
+          dtype: List[File]
+          required: true
+      for_loop:
+        var: image
+        over: image-list
+      steps:
+        fft-image:
+          cab: fft-image
+          params:
+            image: =recipe.image
+            fft-image: =STRIPEXT(current.image) + ".fft.fits"
+            lambda-per-arcsec: 100
+
+  steps:
+    mean-cubes:
+      recipe:
+        name: mean_iquv
+        inputs:
+          prefix:
+            dtype: str
+        for_loop:
+          var: stokes
+          over: [I, Q, U, V]
+        steps:
+          mean-image:
+            cab: weighted-mean-image
+            params:
+              images: =GLOB("{recipe.prefix}-t????-MFS-{recipe.stokes}-image.fits")
+              residuals: =GLOB("{recipe.prefix}-t????-MFS-{recipe.stokes}-residual.fits")
+              output_image: "{recipe.prefix}-mean-MFS-{recipe.stokes}-image.fits"
+              output_residual: "{recipe.prefix}-mean-MFS-{recipe.stokes}-residual.fits"
+          fft-mean-residual:
+            cab: fft-image
+            params:
+              image: =previous.output_residual
+              fft-image: =STRIPEXT(previous.output_residual) + ".fft.fits"
+              lambda-per-arcsec: 100
+      params:
+        prefix: "{recipe.image-upsample-prefix}"
+        
+    cubical:
+      delay:
+        cab: cubical
+        params:
+          data.ms: =recipe.ms
+          parset: cc-parsets/solve-k.parset
+          out.dir: '{recipe.dir-out}/solve{info.suffix}{recipe.suffix}-k'
+          out.name: cc
+          out.column: CORRECTED{info.suffix}_DATA
+          model.list: MODEL_DATA
+          out.derotate: =recipe.pa-rotate
+          model.pa-rotate: =recipe.pa-rotate
+          model.feed-rotate: =IF(recipe.pa-rotate, "auto", 0)
+          sol.min-bl: =recipe.baseline-cal-cut 
+          
+    wsclean:
+      base:
+        info: "base wsclean settings"
+        cab: wsclean
+        params:
+          ms: =recipe.ms
+          prefix: =recipe.image-prefix
+          column: CORRECTED{info.suffix}_DATA
+          size: 13000
+          scale: 0.8asec
+          padding: 1.3
+          nwlayers-factor: 3
+          nchan: 8
+          temp_dir: =root.dirs.temp
+          use-wgridder: true
+          log-time: true
+          minuv-l: =IF(recipe.inner-taper.enable, recipe.inner-taper.cut, UNSET)
+          taper-inner-tukey: =IF(recipe.inner-taper.enable, recipe.inner-taper.taper, UNSET)
+
+      dirty:
+        _use: lib.steps.wsclean.base
+        info: "wsclean step for dirty-only image"
+        params:
+          column: CORRECTED_DATA
+          weight: 'briggs 0'
+          niter: 0
+          # parallel_gridding: 64
+
+      dirty_pol:
+        _use: lib.steps.wsclean.dirty
+        info: "wsclean step for dirty-only IQUV image"
+        cab: wsclean_pol
+        params:
+          pol: IQUV
+
+      image:
+        _use: lib.steps.wsclean.dirty
+        info: "wsclean step for imaging"
+        params:
+          column: CORRECTED_DATA
+          mgain: 0.9
+          weight: 'briggs 0'
+          fit-beam: true
+          elliptical-beam: true
+          parallel-deconvolution: 1500
+          niter: 50000
+          join-channels: true
+          fit-spectral-pol: 4
+          #auto-threshold: 3
+
+      image_pol:
+        _use: lib.steps.wsclean.image
+        info: "wsclean step for IQUV imaging"
+        cab: wsclean_pol
+        params:
+          join-polarizations: true
+          fit-spectral-pol: =UNSET 
+          pol: IQUV
+          #auto-threshold: 3
+
+      image_pol2:
+        _use: lib.steps.wsclean.image_pol
+        info: "wsclean step for IQ imaging"
+        params:
+          pol: IQ
+
+      predict:
+        _use: lib.steps.wsclean.base
+        info: "wsclean step for predicting a model"
+        params:
+          predict: true
+
+      predict_pol:
+        _use: lib.steps.wsclean.predict
+        info: "wsclean step for predicting an IQUV model"
+        cab: wsclean_pol
+        params:
+          predict: true
+          pol: IQUV
+
+      predict_pol2:
+        _use: lib.steps.wsclean.predict_pol
+        info: "wsclean step for predicting an IQ model"
+        params:
+          pol: IQ
+
+    quartical:
+      k:
+        _use: lib.steps.quartical.base
+        params:
+          input_ms:
+            path: =recipe.ms
+            select_corr: [0,1,2,3]
+            select_uv_range: =LIST(400*0.33, 0)
+          input_model:
+            recipe: MODEL_DATA
+            apply_p_jones: =recipe.pa-rotate
+          solver:
+            terms: [K]
+            iter_recipe: [50]
+            propagate_flags: true
+            robust: false
+          output:
+            gain_directory: "{recipe.dir-out}/cal-{info.suffix}"
+            log_directory: "{recipe.dir-out}/cal-{info.suffix}"
+            overwrite: true
+            products: [corrected_data]
+            columns: =LIST("CORRECTED{info.suffix}_DATA")
+            flags: true
+            apply_p_jones_inv: =recipe.pa-rotate
+          mad_flags:
+            enable: =root.mad-flag 
+            threshold_bl: 6
+            threshold_global: 8
+            max_deviation: 1000
+          K:
+            time_interval: 1
+            freq_interval: 0
+            type: delay
+            initial_estimate: false
+
+      k-de:
+        _use: lib.steps.quartical.k
+        params:
+          input_model:
+            recipe: MODEL{info.suffix}_DATA~DIR1_DATA:DIR1_DATA
+          solver:
+            terms: [K,dE]
+            iter_recipe: [25,25,25,25,25]
+          output:
+            products: [corrected_residual]
+            subtract_directions: [1]
+          dE:
+            direction_dependent: true
+            time_interval: 16
+            freq_interval: 128
+            type: complex
