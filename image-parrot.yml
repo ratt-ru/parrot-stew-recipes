@@ -1,8 +1,7 @@
 #!/usr/bin/env -S stimela run
-#!/usr/bin/env -S stimela run
 
 _include:
-  - rrat-cabs-cc.yml
+  - parrot-cabs.yml
 
 ## this augments the standard 'opts' config section to tweak logging settings
 opts:
@@ -419,7 +418,7 @@ ratt-parrot:
         outfile_srl: =STRIPEXT(current.image) + '.srl'
 
     source-catalog-spi:
-      _use: ratt-rrat.steps.source-catalog
+      _use: ratt-parrot.steps.source-catalog
       params:
         image: =steps.derive-obs-specific-power-beam.outcube
         detection_image: =steps.image-3.restored.mfs
@@ -629,19 +628,13 @@ ratt-parrot:
 
     extract-lightcurves-1:
       info: extracts lightcurves from raw cube
-      _use: ratt-rrat.steps.extract-lightcurves
+      _use: ratt-parrot.steps.extract-lightcurves
       skip: false
       params:
         cube: =steps.cube-4htc.cube
         outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}'
       skip_if_outputs: fresh
       tags: [lightcurves]
-
-    # extract-lightcurves-1c:
-    #   _use: ratt-rrat.steps.extract-lightcurves-1
-    #   params:
-    #     cube: =steps.clean-cube-4htc.cube
-    #     outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}-clean'
 
     extract-lightcurves-per-band:
       info: extracts per-band lightcurves using the cubes-5tf output
@@ -663,14 +656,14 @@ ratt-parrot:
           over: bands
         steps:
           lc1:
-            _use: ratt-rrat.steps.extract-lightcurves
+            _use: ratt-parrot.steps.extract-lightcurves
             params:
               cube: '{recipe.cube-prefix}{recipe.band:04d}.fits'
               outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}-perband/band{recipe.band:04d}'
               catalog: =recipe.catalog
               nsrc: =recipe.nsrc
           lc2:
-            _use: ratt-rrat.steps.extract-lightcurves
+            _use: ratt-parrot.steps.extract-lightcurves
             params:
               cube: '{recipe.cube-prefix}{recipe.band:04d}{recipe.lc-suffix}.fits'
               outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}{recipe.lc-suffix}-perband/band{recipe.band:04d}'
@@ -686,7 +679,7 @@ ratt-parrot:
                          GLOB("{steps.predict-5.prefix}-????-model.fits"))
   
     extract-lightcurves-base:
-      _use: ratt-rrat.steps.extract-lightcurves
+      _use: ratt-parrot.steps.extract-lightcurves
       params:
         cube: =steps.cube-convolve-sub.outimage
         outdir: '{recipe.dir-out}/lc{recipe.htc_cadence}{recipe.lc-suffix-sub}'
@@ -694,7 +687,7 @@ ratt-parrot:
       skip_if_outputs: fresh
 
     extract-lightcurves-sub:
-      _use: ratt-rrat.steps.extract-lightcurves
+      _use: ratt-parrot.steps.extract-lightcurves
       params:
         cube: =steps.extract-lightcurves.cube
         outdir: '{steps.extract-lightcurves.outdir}-sub{recipe.lc-suffix-sub}'
