@@ -4,7 +4,7 @@ _include:
 ratt-parrot:
   steps:
     flaglist:
-      cab: flagman
+      cab: casa.flagman
       params:
         ms: =recipe.ms
         mode: list

@@ -1,6 +1,22 @@
 _include:
-  - omstimelation/oms-cabs.yml
-  - omstimelation/oms-ddf-cabs.yml
+  (cultcargo):
+    - wsclean.yml
+    - casa-flag.yml
+    - breizorro.yml
+    - quartical.yml
+    - cubical.yml
+    - crystalball.yml
+    - smops.yml
+    - taql.yml
+    - msutils.yml
+    - fitstool.yml
+    - bdsf.yml
+    - tigger.yml
+    - tricolour.yml
+
+  omstimelation:
+    - oms-cabs-cc.yml
+    - oms-ddf-cabs.yml
 
 cabs:
   fix-ms-direction:
@@ -225,7 +241,7 @@ lib:
           padding: 1.3
           nwlayers-factor: 3
           nchan: 8
-          temp_dir: =root.dirs.temp
+          temp-dir: =root.dirs.temp
           use-wgridder: true
           log-time: true
           minuv-l: =IF(recipe.inner-taper.enable, recipe.inner-taper.cut, UNSET)
@@ -243,7 +259,6 @@ lib:
       dirty_pol:
         _use: lib.steps.wsclean.dirty
         info: "wsclean step for dirty-only IQUV image"
-        cab: wsclean_pol
         params:
           pol: IQUV
 
@@ -265,7 +280,6 @@ lib:
       image_pol:
         _use: lib.steps.wsclean.image
         info: "wsclean step for IQUV imaging"
-        cab: wsclean_pol
         params:
           join-polarizations: true
           fit-spectral-pol: =UNSET 
@@ -287,7 +301,6 @@ lib:
       predict_pol:
         _use: lib.steps.wsclean.predict
         info: "wsclean step for predicting an IQUV model"
-        cab: wsclean_pol
         params:
           predict: true
           pol: IQUV

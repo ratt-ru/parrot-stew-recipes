@@ -9,6 +9,10 @@ opts:
     name: log-{info.fqname}
     nest: 2
     symlink: log
+  backend:
+    select: singularity
+    singularity:
+      auto_update: true
 
 ## 'jove' is not a standard config section, therefore stimela exec treats this as a recipe definition
 jove-prepare:
@@ -68,7 +72,7 @@ jove-prepare:
 
     flagsave-init:
       info: save initial flag version after splitting, should in pricniple just run once (see skip attribute)
-      cab: flagman
+      cab: casa.flagman
       params:
         ms: =recipe.ms
         mode: save

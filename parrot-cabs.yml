@@ -1,6 +1,22 @@
 _include:
-  - omstimelation/oms-cabs.yml
-  - omstimelation/oms-ddf-cabs.yml
+  (cultcargo):
+    - wsclean.yml
+    - casa-flag.yml
+    - breizorro.yml
+    - quartical.yml
+    - cubical.yml
+    - crystalball.yml
+    - smops.yml
+    - taql.yml
+    - msutils.yml
+    - fitstool.yml
+    - bdsf.yml
+    - tigger.yml
+    - tricolour.yml
+
+  omstimelation:
+    - oms-cabs-cc.yml
+    - oms-ddf-cabs.yml
 
 cabs:
   stack_time_cube:
@@ -86,6 +102,8 @@ cabs:
         dtype: int
         default: 4
       output_file_label:
+        dtype: str
+      plot_title:
         dtype: str
     outputs:
       regfile:
@@ -327,18 +345,18 @@ lib:
       inputs:
         prefix:
           dtype: str
-        skip_regions:
+        skip-regions:
           dtype: File
           default: 'rrat.reg'
       
       aliases:
         # inputs
-        restored_image: mask.restored_image
+        restored-image: mask.restored-image
         threshold: mask.threshold
         dilate: mask.dilate
         # outputs
         mask: mask.mask
-        except_rrat: mask-except_rrat.mask
+        except-rrat: mask-except-rrat.mask
         mul: mask-mul.mask
 
       defaults:
@@ -351,21 +369,21 @@ lib:
           params:
             mask: '{recipe.prefix}-mask.fits'
 
-        mask-except_rrat:
+        mask-except-rrat:
           cab: breizorro
           info: "makes mask which contains everything except the dwarf"
           params:
-            mask_image: '{previous.mask}'
-            subtract: '{recipe.skip_regions}'
-            number_islands: true
+            mask-image: '{previous.mask}'
+            subtract: '{recipe.skip-regions}'
+            number-islands: true
             mask: '{recipe.prefix}-mask-nodwarf.fits'
 
         mask-mul:
           cab: breizorro
           info: "makes mask which is 1 everywhere except at the dwarf"
           params:
-            mask_image: '{steps.mask.mask}'
-            subtract: '{steps.mask-except_rrat.mask}'
+            mask-image: '{steps.mask.mask}'
+            subtract: '{steps.mask-except-rrat.mask}'
             invert: true
             mask: '{recipe.prefix}-multiplicative-mask.fits'
 
@@ -402,7 +420,7 @@ lib:
           size: '{recipe.wsclean_size}'
           scale: '{recipe.pixel_scale}asec'
           nchan: '{recipe.wsclean_nchan}'
-          temp_dir: '{config.run.env.HOME}/tmp'
+          temp-dir: '{config.run.env.HOME}/tmp'
           column: SELFCAL{info.suffix}_DATA
       image:
         params:

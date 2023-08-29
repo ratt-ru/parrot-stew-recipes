@@ -9,8 +9,12 @@ opts:
     name: log-{info.fqname}
     nest: 2
     symlink: log
-  rlimits:
-    NOFILE: 100000  # set high limit on number of open files
+  backend:
+    select: singularity
+    singularity:
+      auto_update: true
+    rlimits:
+      NOFILE: 100000  # set high limit on number of open files
 
 ## 'jove' is not a standard config section, therefore stimela exec treats this as a recipe definition
 jove-pol4:
@@ -107,7 +111,7 @@ jove-pol4:
 
     flagreset:
       info: revert to initial flag version at start of processing
-      cab: flagman
+      cab: casa.flagman
       params:
         mode: restore
         versionname: =recipe.initial-flag-version
@@ -132,7 +136,7 @@ jove-pol4:
     mask-1:
       cab: breizorro
       params:
-        restored_image: =steps.image-*.restored-mfs-i
+        restored-image: =steps.image-*.restored.i.mfs
         mask: '{steps.image-*.prefix}-mask.fits'
         threshold: 10
         dilate: 5
@@ -160,7 +164,7 @@ jove-pol4:
     mask-2:
       cab: breizorro
       params:
-        restored_image: =steps.image-*.restored-mfs-i
+        restored-image: =steps.image-*.restored.i.mfs
         mask: '{steps.image-*.prefix}-mask.fits'
 
     selfcal-2:
@@ -180,7 +184,7 @@ jove-pol4:
     mask-3:
       cab: breizorro
       params:
-        restored_image: =steps.image-*.restored-mfs-i
+        restored-image: =steps.image-*.restored.i.mfs
         mask: '{steps.image-*.prefix}-mask.fits'
 
     upsample-3:
@@ -226,22 +230,22 @@ jove-pol4:
     fft-residual-4:
       recipe: fft-image-list
       params:
-        image-list: =steps.image-*.residual-mfs
+        image-list: =LIST(steps.image-*.residual.i.mfs, steps.image-*.residual.v.mfs)
 
     mask-4:
       cab: breizorro
       params:
-        restored_image: =steps.image-*.restored-mfs-i
+        restored-image: =steps.image-*.restored.i.mfs
         mask: '{steps.image-*.prefix}-mask.fits'
 
     norrat-mask-4:
       cab: breizorro
       info: "makes mask which contains everything except the RRAT"
       params:
-        mask_image: '{steps.mask-*.mask}'
-        number_islands: true
-        remove_islands: ['302.404041deg,-20.446395deg']
-        ignore_missing_islands: true
+        mask-image: '{steps.mask-*.mask}'
+        number-islands: true
+        remove-islands: ['302.404041deg,-20.446395deg']
+        ignore-missing-islands: true
         mask: '{steps.image-*.prefix}-mask-norrat.fits'
 
     ms-image-4ms:
@@ -272,9 +276,9 @@ jove-pol4:
       params:
         ms: =recipe.ms
         within: dd.reg
-        output_column: DIR1_DATA
-        num_sources: 1000
-        sky_model: "{steps.unpol-image-*.source-list}"
+        output-column: DIR1_DATA
+        num-sources: 1000
+        sky-model: "{steps.unpol-image-*.source-list}"
 
     upsample-4:
       cab: smops
@@ -348,20 +352,20 @@ jove-pol4:
         colname: RESIDUAL_DATA
 
     make-residual-data:
-      cab: taql_update
+      cab: taql.update
       params: 
         ms: "{recipe.ms}"
         commands: =LIST("set", "RESIDUAL_DATA={steps.image-*.column}-MODEL_DATA")
 
     saveflags-5:
-      cab: flagman
+      cab: casa.flagman
       params:
         ms: =recipe.ms
         mode: save
         versionname: flags_{info.suffix}
 
     flagsummary-5:
-      cab: flagsummary
+      cab: casa.flagsummary
       params:
         ms: =recipe.ms
 
@@ -391,7 +395,7 @@ jove-pol4:
         data-column: RESIDUAL_DATA
 
     flagsummary-6:
-      cab: flagsummary
+      cab: casa.flagsummary
       params:
         ms: =recipe.ms
 
@@ -419,9 +423,9 @@ jove-pol4:
       params:
         ms: =recipe.ms
         within: dd.reg
-        output_column: DIR1A_DATA
-        num_sources: 1000
-        sky_model: "{steps.unpol-image-*.source-list}"
+        output-column: DIR1A_DATA
+        num-sources: 1000
+        sky-model: "{steps.unpol-image-*.source-list}"
 
     dd_selfcal-7:
       _use: lib.steps.cubical.delay
@@ -453,7 +457,7 @@ jove-pol4:
 
     subtract-model:
       info: populate CORRECTED_DATA column with residuals from last imaging step
-      cab: taql_update
+      cab: taql.update
       params: 
         ms: "{recipe.ms}"
         commands: =LIST("set", "CORRECTED_DATA={steps.image-*.column}-MODEL_DATA")
@@ -483,114 +487,3 @@ jove-pol4:
         size: '{recipe.htc_size}'
         scale: '{recipe.htc_scale}'
 
-    # mask5a:
-    #   cab: breizorro
-    #   skip: true
-    #   info: "makes mask which is 1 everywhere except at the dwarf"
-    #   params:
-    #     mask_image: '{steps.mask3.mask}'
-    #     mask: '{steps.image5.prefix}-multiplicative-mask.fits'
-    #     number_islands: true
-    #     extract_islands: ['302.404041deg,-20.446395deg']
-    #     invert: true
-
-    # predict_6:
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   info: "Re-runs predict from DI step 4 using Stokes IQ only"
-    #   _use: lib.steps.wsclean.predict_pol
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: "{recipe.dir_out}/im5masked/s{recipe.scan}/im5{recipe.suffix}-int-s{recipe.scan}-{recipe.dd_sol_type}"
-    #     intervals_out: 4
-
-    # image5nopol:
-    #   _use: lib.steps.wsclean.image
-    #   skip: true
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: '{recipe.dir_out}/im5check/s{recipe.scan}/im5{recipe.suffix}-int-s{recipe.scan}-{recipe.dd_sol_type}'
-    #     column: "{steps.dd_selfcal1a.out_column}"
-    #     fits_mask: "{steps.mask3.mask}"
-    #     intervals_out: 4
-    #     niter: 100000
-    #     no_update_model_required: true
-
-    # dd_predict6:
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   _use: lib.steps.wsclean.predict_pol
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: "{steps.image5.prefix}"
-    #     intervals_out: 4
-
-    # dd_selfcal6:
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   cab: cubical
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     parset: cc-parsets/solve-{recipe.dd_sol_type}.parset
-    #     out_dir: '{recipe.dir_out}/solve-{recipe.dd_sol_type}'
-    #     out_name: cc-s{recipe.scan}
-    #     model_list: MODEL_DATA:DIR1_DATA
-    #     out_column: CORRECTED_DD1_DATA
-
-    # image6:
-    #   _use: lib.steps.wsclean.image_pol
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: '{recipe.dir_out}/im6/s{recipe.scan}/im6{recipe.suffix}-int-s{recipe.scan}-{recipe.dd_sol_type}'
-    #     column: "{previous.out_column}"
-    #     fits_mask: "{steps.mask3.mask}"
-    #     intervals_out: 4
-    #     niter: 100000
-    #     no_update_model_required: true
-
-    # selfcal_res:
-    #   skip: true
-    #   cab: cubical
-    #   params:
-    #     ms: "{previous.ms}"
-    #     parset: solve-{recipe.sol_type}.parset
-    #     out_dir: solve-{recipe.sol_type}-res
-    #     out_name: cc-s{recipe.scan}-k{recipe.sol_k_tint}-{recipe.sol_k_fint}
-    #     out_subtract_dirs: ':'
-
-    # image_res:
-    #   skip: true
-    #   _use: lib.steps.wsclean.image
-    #   params:
-    #     ms: "{previous.ms}"
-    #     prefix: 'img2/im2res{recipe.suffix}-s{recipe.scan}-{recipe.sol_type}-k{recipe.sol_k_tint}-{recipe.sol_k_fint}'
-    #     column: CORRECTED_DATA
-    #     niter: 5000
-    #     no_update_model_required: true
-
-    ## from step 4
-
-    # di_predict4:
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   info: "Re-runs predict from DI step 4"
-    #   _use: lib.steps.wsclean.predict_pol
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: "{steps.image4.prefix}"
-
-    # di_predict_iq:
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   info: "Re-runs predict from DI step 4 using Stokes IQ only"
-    #   _use: lib.steps.wsclean.predict_pol2
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: "{steps.image4.prefix}"
-    #     pol: IQ
-
-    # di_predict_iq_old:
-    #   skip: true      # skip by default, only run explicitly with -s
-    #   info: "Re-runs predict from DI step 4 using Stokes IQ only"
-    #   _use: lib.steps.wsclean.predict_pol2
-    #   params:
-    #     ms: "{steps.image.ms}"
-    #     prefix: '{recipe.dir_out}/im5prev/s{recipe.scan}/im5{recipe.suffix}-int-s{recipe.scan}-kde'
-    #     intervals_out: 4
-    #     pol: IQ
