@@ -8,7 +8,7 @@ You will need to install CARACal 1.0.6+ (https://github.com/caracal-pipeline/car
 
 Once 1GC has been done and the target MS has been extracted, proceed to the selfcal/lightcurve recipes
 
-## Selfcal, dynamic imaging and/or lightcurve extraction
+## Recipe installation
 
 The entire post-1GC workflow is implemented as a Stimela recipe (https://stimela.readthedocs.io), and should be fully reproducible given a big enough compute node with a Singularity installation.
 
@@ -31,7 +31,7 @@ Prerequisites:
 
 *   This recipe collection (https://github.com/ratt-ru/parrot-stew-recipes), tag ``parrot1``.
 
-    The collections aren't formal packages (at time of writing) and don't need to be installed, just checked out from github:
+    The collections are not formal packages (at time of writing) and don't need to be (and can't be) pip installed. Rather, just check out appropriate tags/branches from github as follows:
 
     ```
     git clone https://github.com/ratt-ru/parrot-stew-recipes -b parrot1
@@ -39,7 +39,42 @@ Prerequisites:
     git clone https://github.com/o-smirnov/omstimelation -b parrot1
     ```
 
+You're now all set to go.
 
+## Selfcal & dynamic imaging 
+
+The conjunction observation needs to be processed scan by scan. There is a "preparation" recipe, which splits out one scan into a per-scan MS, and updates field/UVW coordinates:
+
+```
+$ stimela run jove-prepare.yml scan=4
+```
+
+Then there is the a selfcal recipe, which does imaging and selfcal on one (previously prepared) per-scan MS:
+
+```
+$ stimela run jove-pol.yml scan=4
+```
+
+Finally, there is a wrapper recipe, which can be used to execute the above two recipes in a loop over multiple scans:
+
+```
+$ stimela run jove-pol-loop.yml                                       # prepares and selfcals all scans 
+$ stimela run jove-pol-loop.yml scan-list=[4, 6, 8]                   # prepares and selfcals specific scans
+$ stimela run jove-pol-loop.yml scan-list=[4, 6, 8] -s jove-prepare   # prepares speciic scans
+$ stimela run jove-pol-loop.yml scan-list=[4, 6, 8] -s jove-pol       # runs selfcal on speciic scans
+```
+
+## Selfcal and lightcurve extraction for the follow-up observations
+
+The recipe uses static deconvolution masks. Extract them first using ``tar zxvf masks.tgz``.
+
+Run the imaging recipe, specifying a particular observation via the ``obs`` input:
+
+```
+$ stimela run image-parrot.yml obs=U2
+```
+
+See ``parrot-observation-sets.yml`` for a list of observations.
 
 
 

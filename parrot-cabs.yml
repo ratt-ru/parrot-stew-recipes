@@ -19,6 +19,22 @@ _include:
     - oms-ddf-cabs.yml
 
 cabs:
+  wget:
+    command: wget
+    inputs:
+      url: 
+        dtype: str
+        policies:
+          positional: true
+      no-verbose:
+        dtype: bool
+        default: true
+    outputs:
+      dest: 
+        dtype: File
+        required: false
+        nom_de_guerre: 'output-document'
+
   stack_time_cube:
     flavour: python
     command: image_utils.stack_time_cube

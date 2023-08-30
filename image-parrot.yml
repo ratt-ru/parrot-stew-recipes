@@ -384,6 +384,13 @@ ratt-parrot:
         fft-image: =STRIPEXT(steps.image-*.residual.mfs) + '.fft.fits'
         lambda-per-arcsec: 100
 
+    download-power-beam:
+      cab: wget
+      params:
+        url: =recipe.mdv-beams-url
+        dest: =recipe.mdv-beams
+      skip_if_outputs: exist
+
     compute-power-beam:
       cab:  mdv-beams-to-power-beam
       params:

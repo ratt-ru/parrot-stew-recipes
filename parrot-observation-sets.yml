@@ -111,6 +111,7 @@ band:
     ddf-precluster-file: dd-regs-lband.reg
     initial-flag-version: cb_flag__target_rfi_after
     lightcurves-within: 1deg
+    mdv-beams-url: https://archive-gw-1.kat.ac.za/public/repository/10.48479/wdb0-h061/data/MeerKAT_L_band_primary_beam.npz
     mdv-beams: beam/MeerKAT_L_band_primary_beam.npz
     power-beam: beam/MeerKAT_L_band_StokesBeam.I.fits
     catalog-flux-columns: [flux_L, flux_U]
@@ -137,6 +138,7 @@ band:
     ddf-precluster-file: dd-regs-uhf.reg
     initial-flag-version: cbuhf_flag__target_rfi_after
     lightcurves-within: 1deg
+    mdv-beams-url: https://archive-gw-1.kat.ac.za/public/repository/10.48479/wdb0-h061/data/MeerKAT_U_band_primary_beam.npz
     mdv-beams: beam/MeerKAT_U_band_primary_beam.npz
     power-beam: beam/MeerKAT_U_band_StokesBeam.I.fits
     catalog-flux-columns: [flux_U, flux_L]
