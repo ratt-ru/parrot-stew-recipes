@@ -76,6 +76,6 @@ $ stimela run image-parrot.yml obs=U2
 
 See ``parrot-observation-sets.yml`` for a list of observations.
 
-
+A copy of ``mastercat.ecsv`` is provided in the repository. This catalog can also be created via the ``make-master-catalog`` step, based of source finder outputs from multiple observations.
 
 
