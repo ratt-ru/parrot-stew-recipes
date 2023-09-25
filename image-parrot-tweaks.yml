@@ -1,0 +1,7 @@
+ratt-parrot:
+  assign:
+    dirs:
+      ms: /msdir/msdir
+      temp: /scratch
+
+

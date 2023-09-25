@@ -2,6 +2,9 @@
 
 _include:
   - parrot-cabs.yml
+  - image-parrot-config.yml
+_include_post:
+  - image-parrot-tweaks.yml
 
 ## this augments the standard 'opts' config section to tweak logging settings
 opts:
@@ -11,7 +14,6 @@ opts:
     nest: 2
     symlink: log
   backend:
-    select: singularity
     singularity:
       auto_update: true
     rlimits:
@@ -27,8 +29,8 @@ ratt-parrot:
     log.dir: '{recipe.dir-out}/logs/log-{config.run.datetime}'          # put logs into output dir
     # some more directory assignments
     dirs:
-      ms: ../msdir       # MSs live here
-      temp: "{config.run.env.HOME}/tmp"   # temp files go here
+      ms: =IFSET(config.vars.dirs.ms, SELF, "../msdir")                        # MSs live here
+      temp: =IFSET(config.vars.dirs.temp, SELF, "{config.run.env.HOME}/tmp")   # temp files go here
       base: .            # base project directory -- directory of recipe by default, but see below
 
     # _chan1x: =recipe.chan1 - 1       # end channel, inclusive -- helper variable to form CASA spw
@@ -43,7 +45,7 @@ ratt-parrot:
 
   inputs:
     obs:
-      choices: [L1, L2, L3, L4, U0, U1, U2, U3, U3b, U3c]
+      choices: [L1, L2, L3, L4, U0, U1, U2, U3, U3b, U3c, L1test]
       info: "Selects observation, see parrot-observation-sets.yml for list of observations"
       default: L1
     output-suffix:

@@ -1,0 +1,92 @@
+opts:
+  backend:
+    select: kube
+
+    # we have this set up on AWS as a pull-through cache for the quay.io registry
+    override_registries:
+      quay.io/stimela2: 800133935729.dkr.ecr.af-south-1.amazonaws.com/quay/stimela2
+
+    kube:
+      namespace: rarg-test-compute
+      verbose_events: 1   # to get events printed
+      dir: /mnt/data/parrot
+
+      # always_pull_images: true
+
+      # debug:
+      #   pause_on_cleanup: true
+
+      volumes:
+        rarg-test-compute-efs-pvc:
+          mount: /mnt/data
+          at_start: must_exist
+
+        ebs-msdir:
+          storage_class_name: rarg-test-compute-ebs-sc-immediate
+          from_snapshot: parrot-snapshot
+          capacity: 2Ti
+          lifecycle: persist
+          mount: /msdir
+          at_start: allow_reuse
+
+      provisioning_timeout: 0
+
+      ## override user/group ID
+      user:
+        uid: 1000
+        gid: 1000
+
+      ## you can specify a global memory default for pods here,
+      ## but also do this on a per-cab or per-step basis of course
+      # memory: 64Gi
+
+      ## some predefined pod specs
+      predefined_pod_specs:
+        admin:
+          nodeSelector:
+            rarg/node-class: admin
+        thin:
+          nodeSelector:
+            rarg/node-class: compute
+            rarg/instance-type: m5.large
+        medium:
+          nodeSelector:
+            rarg/node-class: compute
+            rarg/instance-type: m5.4xlarge
+        fat:
+          nodeSelector:
+            rarg/node-class: compute
+            rarg/instance-type: m6i.4xlarge
+
+      ## default pod type to use -- keys into predefined_pod_types
+      job_pod:
+        type: thin
+
+## some cab-specific backend tweaks
+cabs:
+  casa.flagman:
+    backend:
+      kube:
+        job_pod:
+          type: thin
+  wsclean:
+    backend:
+      kube:
+        job_pod:
+          type: fat
+        volumes:
+          wsclean-temp:
+            storage_class_name: rarg-test-compute-fsx-sc-af-south-1c
+            # storage_class_name: rarg-test-compute-ebs-sc-immediate-io2-4000
+            # storage_class_name: rarg-test-compute-ebs-sc-immediate
+            capacity: 500Gi
+            lifecycle: persist
+            mount: /scratch
+            at_start: allow_reuse
+            access_modes: [ReadWriteOnce]
+            # access_modes: [ReadWriteMany]
+            init_commands:
+              - chown 1000.1000 .
+            # step_init_commands:
+            #   - (ls -A1 | xargs rm -rf)
+
