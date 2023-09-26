@@ -20,6 +20,11 @@ opts:
         rarg-test-compute-efs-pvc:
           mount: /mnt/data
           at_start: must_exist
+          step_init_commands:
+            - whoami
+            - ls -l /
+            - ls -l /mnt
+            - ls -l /mnt/data
 
         ebs-msdir:
           storage_class_name: rarg-test-compute-ebs-sc-immediate
@@ -76,9 +81,9 @@ cabs:
           type: fat
         volumes:
           wsclean-temp:
-            storage_class_name: rarg-test-compute-fsx-sc-af-south-1c
+            #storage_class_name: rarg-test-compute-fsx-sc-af-south-1c
             # storage_class_name: rarg-test-compute-ebs-sc-immediate-io2-4000
-            # storage_class_name: rarg-test-compute-ebs-sc-immediate
+            storage_class_name: rarg-test-compute-ebs-sc-immediate-gp3-1000
             capacity: 500Gi
             lifecycle: persist
             mount: /scratch
