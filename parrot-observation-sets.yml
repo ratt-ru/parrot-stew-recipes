@@ -11,10 +11,17 @@ run.node:
   bruce:
     obs: U1
     ncpu: 64
+  DEFAULT: {}
 
 obs:
+  L1test:
+    ms: "{recipe.dirs.ms}/1622491578-fresh.ms"   # L deep 1
+    dirs.sub: obs-l1
+    band: L
+    minuv-l: 700  
+    taper-inner-tukey: 100
   L1:
-    ms: ../msdir/1622491578_sdp_l0-J2009_2026-corr.ms   # L deep 1
+    ms: "{recipe.dirs.ms}/1622491578_sdp_l0-J2009_2026-corr.ms"   # L deep 1
     dirs.sub: obs-l1
     band: L
     minuv-l: 700  
