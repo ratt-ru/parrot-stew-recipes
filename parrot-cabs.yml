@@ -475,7 +475,7 @@ lib:
             recipe: MODEL_DATA
           solver:
             terms: [K]
-            iter_recipe: [50]
+            iter_recipe: [100]
             propagate_flags: true
             robust: false
           output:
@@ -494,7 +494,7 @@ lib:
           K:
             time_interval: 1
             freq_interval: 0
-            type: delay
+            type: delay_and_offset
             initial_estimate: false
 
       k-de:
@@ -504,7 +504,7 @@ lib:
             recipe: MODEL{info.suffix}_DATA~DIR1_DATA:DIR1_DATA
           solver:
             terms: [K,dE]
-            iter_recipe: [25,25,25,25,25]
+            iter_recipe: [100,100,100,100,100,100]
           output:
             products: [corrected_residual]
             subtract_directions: [0,1]

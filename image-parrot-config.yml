@@ -9,7 +9,7 @@ opts:
     kube:
       namespace: rarg-test-compute
       verbose_events: 1   # to get events printed
-      dir: /mnt/data/parrot
+      dir: /mnt/data/parrot-jsk
 
       # always_pull_images: true
 
@@ -26,8 +26,8 @@ opts:
             - ls -l /mnt
             - ls -l /mnt/data
 
-        ebs-msdir:
-          storage_class_name: rarg-test-compute-ebs-sc-immediate
+        ebs-msdir-jsk:
+          storage_class_name: rarg-test-compute-ebs-sc-immediate-gp3-500
           from_snapshot: parrot-snapshot
           capacity: 2Ti
           lifecycle: persist
@@ -38,8 +38,8 @@ opts:
 
       ## override user/group ID
       user:
-        uid: 1000
-        gid: 1000
+        uid: 1017
+        gid: 1017
 
       ## you can specify a global memory default for pods here,
       ## but also do this on a per-cab or per-step basis of course
@@ -62,6 +62,7 @@ opts:
           nodeSelector:
             rarg/node-class: compute
             rarg/instance-type: m6i.4xlarge
+            rarg/capacity-type: ON_DEMAND
 
       ## default pod type to use -- keys into predefined_pod_types
       job_pod:
@@ -83,7 +84,7 @@ cabs:
           wsclean-temp:
             #storage_class_name: rarg-test-compute-fsx-sc-af-south-1c
             # storage_class_name: rarg-test-compute-ebs-sc-immediate-io2-4000
-            storage_class_name: rarg-test-compute-ebs-sc-immediate-gp3-1000
+            storage_class_name: rarg-test-compute-efs-sc #rarg-test-compute-ebs-sc-immediate-gp3-500 #rarg-test-compute-ebs-sc-immediate-gp3-1000
             capacity: 500Gi
             lifecycle: persist
             mount: /scratch
@@ -91,7 +92,7 @@ cabs:
             access_modes: [ReadWriteOnce]
             # access_modes: [ReadWriteMany]
             init_commands:
-              - chown 1000.1000 .
+              - chown 1017.1017 .  # No substitution yet!
             # step_init_commands:
             #   - (ls -A1 | xargs rm -rf)
 

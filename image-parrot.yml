@@ -50,7 +50,7 @@ ratt-parrot:
       default: L1
     output-suffix:
       dtype: str
-      default: '-qc2'
+      default: '-qc'
     variant:
       dtype: str
       default: ''
@@ -127,7 +127,7 @@ ratt-parrot:
         ms: =recipe.ms
         mode: save
         versionname: =recipe.initial-flag-version
-      skip: true
+      skip: false
 
     flag-reset:
       cab: casa.flagman
