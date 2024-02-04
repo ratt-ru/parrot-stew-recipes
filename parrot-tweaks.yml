@@ -1,0 +1,92 @@
+opts:
+  backend:
+    singularity:
+      auto_update: false
+    slurm:
+      enable: true
+      srun_opts:
+        time: 1-12        # 1d12h limit 
+        cpus-per-task: 4  # make default conservative -- give more to specific cabs below
+        mem: 0
+
+ratt-parrot:
+  assign:
+    dirs:
+      temp: /scratch3/users/{config.run.env.USER}/tmp
+    ncpu: 4  # default setting unless overridden by cab
+  steps:
+    predict-2:
+      backend:
+        slurm:
+          enable: true
+          srun_opts:
+            mem: 128GB
+            cpus-per-task: 32  
+
+    upsample-2:
+      params:
+        num-threads: 32
+    upsample-3:
+      params:
+        num-threads: 32
+
+cabs:
+  quartical:
+    backend:
+      slurm:
+        srun_opts:
+          mem: 128GB
+          cpus-per-task: 32
+  wsclean:
+    backend:
+      slurm:
+        srun_opts:
+          mem: 240GB
+          cpus-per-task: 32
+  crystalball:
+    backend:
+      slurm:
+        srun_opts:
+          mem: 128GB
+          cpus-per-task: 32
+  stack_time_cube:
+    backend:
+      slurm:
+        srun_opts:
+          cpus-per-task: 1
+          mem: 240GB
+  convolve_image:
+    backend:
+      slurm:
+        srun_opts:
+          cpus-per-task: 8
+          mem: 240GB
+  smops:
+    backend:
+      slurm:
+        srun_opts:
+          cpus-per-task: 32
+          mem: 128GB
+
+  msutils.copycol:
+    backend:
+      slurm:
+        srun_opts:
+          cpus-per-task: 1
+          mem: 128GB
+
+  msutils.addcol:
+    backend:
+      slurm:
+        srun_opts:
+          cpus-per-task: 1
+          mem: 128GB
+
+  fitstool.stack-freq-cube:
+    backend:
+      slurm:
+        srun_opts:
+          cpus-per-task: 1
+          mem: 240GB
+
+

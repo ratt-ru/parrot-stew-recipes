@@ -11,6 +11,7 @@ run.node:
   bruce:
     obs: U1
     ncpu: 64
+  DEFAULT:
 
 obs:
   L1:

@@ -124,6 +124,7 @@ cabs:
     outputs:
       regfile:
         dtype: File
+        mkdir: true
       statsfile:
         dtype: File
       outdir:
@@ -436,7 +437,7 @@ lib:
           size: '{recipe.wsclean_size}'
           scale: '{recipe.pixel_scale}asec'
           nchan: '{recipe.wsclean_nchan}'
-          temp-dir: '{config.run.env.HOME}/tmp'
+          temp-dir: =recipe.dirs.temp
           column: SELFCAL{info.suffix}_DATA
       image:
         params:
