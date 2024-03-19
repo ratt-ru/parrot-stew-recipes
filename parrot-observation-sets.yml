@@ -1,4 +1,4 @@
-run.node:
+config.run.node:
   baker:
     obs: L1
     ncpu: 64
@@ -32,7 +32,7 @@ obs:
     minuv-l: =UNSET
     taper-inner-tukey: =UNSET
   L4:
-    ms: "../msdir/1687288333_sdp_l0-J2009_2026-corr.ms" # L deep 4
+    ms: "msdir/1687288333_sdp_l0-J2009_2026-corr.ms" # L deep 4
     dirs.sub: obs-l4
     band: L
     minuv-l: 700  

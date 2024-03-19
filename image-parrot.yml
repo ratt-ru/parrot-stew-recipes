@@ -12,8 +12,6 @@ opts:
     symlink: log
   backend:
     select: singularity
-    singularity:
-      auto_update: true
     rlimits:
       NOFILE: 100000  # set high limit on number of open files
 
@@ -28,7 +26,7 @@ ratt-parrot:
     # some more directory assignments
     dirs:
       ms: ../msdir       # MSs live here
-      temp: "{config.run.env.HOME}/tmp"   # temp files go here
+      temp: ./tmp # "{config.run.env.HOME}/tmp"   # temp files go here
       base: .            # base project directory -- directory of recipe by default, but see below
 
     # _chan1x: =recipe.chan1 - 1       # end channel, inclusive -- helper variable to form CASA spw
@@ -380,8 +378,8 @@ ratt-parrot:
     fft-image-4:
       cab: fft-image
       params:
-        image: =steps.image-*.residual.mfs
-        fft-image: =STRIPEXT(steps.image-*.residual.mfs) + '.fft.fits'
+        image: =steps.image-4.residual.mfs
+        fft-image: =STRIPEXT(current.image) + '.fft.fits'
         lambda-per-arcsec: 100
 
     download-power-beam:
@@ -518,6 +516,25 @@ ratt-parrot:
         size: '{recipe.htc_size}'
         scale: '{recipe.htc_scale}'
       tags: [lightcurves]
+      skip_if_outputs: fresh
+
+    image-4htcpol:
+      _use: lib.steps.wsclean.dirty
+      params:
+        column: CORRECTED_DATA
+        prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/images/cad{recipe.htc_cadence}'
+        intervals-out: =steps.ms-info.num_intervals / recipe.htc_cadence
+        pol: IQUV
+        nchan: 1
+        niter: 0 # 10000
+        auto-threshold: 1
+        threshold: 0
+        mgain: 1
+        weight: '{recipe.htc_weight}'
+        size: '{recipe.htc_size}'
+        scale: '{recipe.htc_scale}'
+      tags: [lightcurves]
+      skip: true
       skip_if_outputs: fresh
 
     image-5tf:
