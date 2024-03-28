@@ -227,7 +227,7 @@ def zarr_to_fits(zarr, outimage):
     ds = xarray.open_zarr(zarr)
     print(f"saving {zarr} to {outimage}")
     # Create a Primary HDU object to encapsulate the data
-    hdu = fits.PrimaryHDU(ds.cube0.transpose().values, fits.Header(ds.cube0.attrs['header']))
+    hdu = fits.PrimaryHDU(ds.cube0.transpose().values, fits.Header(ds.attrs['fits_header']))
 
     # Create an HDUList to contain the HDU(s)
     hdulist = fits.HDUList([hdu])

@@ -616,11 +616,11 @@ ratt-parrot:
       skip_if_outputs: fresh
       tags: [lightcurves]
 
-    cube-convolve-fits:
+    export-cube-to-fits:
       cab: zarr_to_fits
       params:
         zarr: =previous.outimage
-        outimage: =STRIPEXT(current.zarr) + '.fits'
+        outimage: =current.zarr + '.fits'
       skip: true 
       skip_if_outputs: fresh
       tags: [lightcurves]
