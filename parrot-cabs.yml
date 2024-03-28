@@ -45,16 +45,42 @@ cabs:
       ms:
         dtype: MS
         required: true
+      cadence:
+        dtype: int
     outputs:
       cube:
         dtype: File
 
-  convolve_image:
+  stack_xarray_cube:
     flavour: python
-    command: image_utils.convolve_image
+    command: image_utils_xarr.stack_time_cube
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/xarray
+    inputs:
+      images:
+        dtype: List[File]
+        required: true
+      ms:
+        dtype: MS
+        required: true
+      cadence:
+        dtype: int
+    outputs:
+      cube:
+        dtype: Directory
+
+  convolve_xarray_image:
+    flavour: python
+    command: image_utils_xarr.convolve_cube
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/xarray
     inputs:
       image:
-        dtype: File
+        dtype: Directory
         required: true
       size_arcsec:
         dtype: float
@@ -65,6 +91,21 @@ cabs:
       use_fft:
         dtype: bool
         info: use FFT for convolution (only if size_sec=0)
+    outputs:
+      outimage:
+        dtype: Directory
+
+  zarr_to_fits:
+    flavour: python
+    command: image_utils_xarr.zarr_to_fits
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/xarray
+    inputs:
+      zarr:
+        dtype: Directory
+        required: true
     outputs:
       outimage:
         dtype: File
@@ -87,7 +128,7 @@ cabs:
     command: image_utils.extract_light_curves
     inputs:
       cube:
-        dtype: File
+        dtype: Directory
       catalog:
         dtype: File
       nsrc:

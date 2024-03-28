@@ -104,6 +104,7 @@ band:
     pixel_scale: 0.8
     htc_size: 3072
     htc_scale: 2.4arcsec
+    htc_cadence: 1
     wsclean_nchan: 8
     lib.steps.ddfacet.base.params.Image.Cell: 0.8
     psf_size: 6

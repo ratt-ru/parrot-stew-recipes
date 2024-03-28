@@ -71,7 +71,7 @@ ratt-parrot:
     convolve:
       arcsec:
         dtype: float
-        default: 0
+        default: 8
       time:
         dtype: float
         default: 120
@@ -549,11 +549,12 @@ ratt-parrot:
         scale: =recipe.htfc_scale
 
     cube-4htc:
-      cab: stack_time_cube
+      cab: stack_xarray_cube
       params:
         images: =steps.image-*htc.dirty.per-interval
-        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube-{recipe.htc_cadence}-dirty.fits'
+        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube-{recipe.htc_cadence}-dirty.zarr'
         ms: =recipe.ms
+        cadence: =recipe.htc_cadence
       skip_if_outputs: fresh
       tags: [lightcurves]
 
@@ -595,7 +596,7 @@ ratt-parrot:
               ms: =root.ms
             skip_if_outputs: fresh
           convolve:
-            cab: convolve_image
+            cab: convolve_xarray_image
             params:
               image: =previous.cube
               size_arcsec: =root.convolve.arcsec
@@ -605,23 +606,33 @@ ratt-parrot:
             skip_if_outputs: fresh
 
     cube-convolve:
-      cab: convolve_image
+      cab: convolve_xarray_image
       params:
         image: =steps.cube-4htc.cube
         size_arcsec: =recipe.convolve.arcsec
         size_sec: =recipe.convolve.time
-        outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix}.fits'
+        outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix}.zarr'
       skip: =not recipe.lc-suffix 
       skip_if_outputs: fresh
       tags: [lightcurves]
 
+    cube-convolve-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =previous.outimage
+        outimage: =STRIPEXT(current.zarr) + '.fits'
+      skip: true 
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+    
+
     cube-convolve-sub:
-      cab: convolve_image
+      cab: convolve_xarray_image
       params:
         image: =steps.cube-4htc.cube
         size_arcsec: =recipe.convolve-sub.arcsec
         size_sec: =recipe.convolve-sub.time
-        outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix-sub}.fits'
+        outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix-sub}.zarr'
       skip: =not recipe.lc-suffix-sub
       skip_if_outputs: fresh
       tags: [lightcurves]
