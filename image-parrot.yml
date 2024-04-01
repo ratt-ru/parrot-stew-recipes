@@ -555,8 +555,29 @@ ratt-parrot:
         cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube-{recipe.htc_cadence}-dirty.zarr'
         ms: =recipe.ms
         cadence: =recipe.htc_cadence
+        convolved-cube: =STRIPEXT(current.cube) + '.convolved.zarr'
+        convolve-arcsec: =recipe.convolve.arcsec
       skip_if_outputs: fresh
       tags: [lightcurves]
+
+    cube-4htc-to-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =steps.cube-4htc.cube
+        outimage: =current.zarr + '.fits'
+      skip: true 
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    cube-4htc-convolved-to-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =steps.cube-4htc.convolved-cube
+        outimage: =current.zarr + '.fits'
+      skip: true 
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
 
     extract-metadata:
       cab: extract_fits_metadata

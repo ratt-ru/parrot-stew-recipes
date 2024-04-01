@@ -67,9 +67,16 @@ cabs:
         required: true
       cadence:
         dtype: int
+      convolve-arcsec:
+        dtype: float
+      convolve-pix:
+        dtype: float
     outputs:
       cube:
         dtype: Directory
+      convolved-cube:
+        dtype: Directory
+
 
   convolve_xarray_image:
     flavour: python

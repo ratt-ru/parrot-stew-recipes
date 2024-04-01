@@ -7,6 +7,7 @@ import traceback
 import fnmatch
 import datetime
 import warnings
+from logging import info, warning, error
 from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import numpy as np
@@ -38,6 +39,9 @@ from regions import Regions
 import pandas as pd
 import click
 
+import logging
+logging.basicConfig(format='%(asctime)s %(levelname)s - %(message)s', level=logging.INFO)
+
 # boilerplate for supporting click wrappers around python cabs
 from scabha.schema_utils import clickify_parameters
 from stimela.kitchen.cab import Cab
@@ -55,9 +59,14 @@ def get_freq_axis(hdr):
     else:
         return None
 
-def stack_time_cube(images: List[str], cube: str, ms: str, verbose: bool = False, 
-                      time_chunking: int = 1e+9, xy_chunking: int = 128, cadence: int = 1, include_freq_axis: bool = False):
-    print(f"will process {len(images)} snapshot images")
+def stack_time_cube(images: List[str], cube: str, ms: str, 
+                    convolved_cube: str = None,
+                    convolve_arcsec: float = None, convolve_pix: float = None,
+                    verbose: bool = False, 
+                    time_chunking: int = 1e+9, xy_chunking: int = 128, 
+                    cadence: int = 1, 
+                    include_freq_axis: bool = False):
+    info(f"will process {len(images)} snapshot images")
     # read datasets
     datasets = xds_from_fits(images, prefix="cube")
 
@@ -67,7 +76,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str, verbose: bool = False
     dt = ms_tms[1] - t0
     grid = np.arange(t0, ms_tms[-1] + dt/2, dt*cadence)
     # time_grid = [Time(t*24*3600, format="mjd") for t in grid]
-    print(f"MS has {len(ms_tms)} unique timestamps. Total grid of {len(grid)} timestamps with interval {dt}s")
+    info(f"MS has {len(ms_tms)} unique timestamps. Total grid of {len(grid)} timestamps with interval {dt}s")
     # get freq axis and copy to axis 4
     axiskw = 'NAXIS', 'CTYPE', 'CUNIT', 'CRPIX', 'CRVAL', 'CDELT'
     hdr = datasets[0].cube0.attrs['header']
@@ -111,16 +120,16 @@ def stack_time_cube(images: List[str], cube: str, ms: str, verbose: bool = False
         offset = t - it*dt
         max_delta = max(max_delta, abs(offset))
         if verbose:
-            print(f"timeslot {it} for {tm} (image {nimg}): offset {offset}s")
+            info(f"timeslot {it} for {tm} (image {nimg}): offset {offset}s")
         if abs(offset) > dt/2:
             raise ValueError(f"timeslot {it} for {tm} (image {nimg}) is too far from a time grid point ({offset}s)")
         if it < 0 or it >= len(grid):
             raise ValueError(f"timeslot {it} for {tm} (image {nimg}) out of range")
         time_index[it] = nimg
 
-    print(f"max time offset was {max_delta}s")
+    info(f"max time offset was {max_delta}s")
 
-    print(f"processing datasets")
+    info(f"processing datasets")
 
     # eliminate Stokes and freq axis, transpose to X-Y, and add time axis as #2
     datasets = [ds.squeeze(['cube0-0', 'cube0-1']).transpose().expand_dims(dim="time", axis=2) for ds in datasets]
@@ -134,16 +143,48 @@ def stack_time_cube(images: List[str], cube: str, ms: str, verbose: bool = False
 
     # concatenate and rechunk
     chunks = {'cube0-2': xy_chunking, 'cube0-3': xy_chunking, 'time': time_chunking}
-    output_ds = xarray.concat(output_datasets, dim="time").chunk(chunks=chunks)
-
+    output_ds = xarray.concat(output_datasets, dim="time")
+    
     output_ds.attrs['time_grid'] = grid
     output_ds.attrs['fits_header'] = dict(hdr)
     output_ds.attrs['fits_header'].pop('HISTORY', None)
     output_ds.attrs['fits_header'].pop('COMMENT', None)
 
-    print(f"saving output dataset {cube}")
+    # convolve
+    if convolved_cube:
+        if convolve_pix is None:
+            if convolve_arcsec is None:
+                convolve_arcsec = 3600*(hdr['BMAJ'] + hdr['BMIN'])/2
+            
+            scale = 3600*hdr['CDELT1']
+            convolve_pix = abs(convolve_arcsec / scale) / 2.355 # convert FWHM to sigma
+        sigma = np.array([convolve_pix, convolve_pix])
+
+        info(f"computing kernel for {sigma}")
+        kernel = create_multidimensional_gaussian_kernel(sigma)
+        array = output_ds.cube0.data
+        info(f"kernel shape is {kernel.shape}, array shape is {array.shape}")
+
+        # Convert to frequency domain
+        input_fft = da.fft.fft2(array, axes=(0, 1))
+        kernel_fft = da.fft.fft2(kernel, array.shape[:2])
+        
+        # Perform multiplication in frequency domain
+        convolved_fft = input_fft * kernel_fft[:, :, np.newaxis]
+        
+        # Convert back to spatial domain
+        convolved_array = da.fft.ifft2(convolved_fft, axes=(0, 1)).real  # .real is used to discard imaginary part
+
+        info(f"saving stacked convolved cube dataset {convolved_cube}")
+        # Compute the result (or you can use this in further lazy computations)
+        conv_ds = output_ds.assign(cube0=(output_ds.dims, convolved_array)).chunk(chunks=chunks)
+        conv_ds.to_zarr(convolved_cube, mode="w")
+
     # save to zarr
+    info(f"saving stacked cube dataset {cube}")
+    output_ds = output_ds.chunk(chunks=chunks)
     output_ds.to_zarr(cube, mode="w")
+    info(f"done")
 
 
 def create_multidimensional_gaussian_kernel(sigma: List[float], size: Optional[List[int]] = None):
@@ -165,7 +206,7 @@ def create_multidimensional_gaussian_kernel(sigma: List[float], size: Optional[L
     
     return kernel
 
-def convolve_cube(image, outimage, size_arcsec=None, size_pix=None, size_sec=0, use_fft=True, ncpu: int=0):
+def convolve_time_cube(image, outimage, size_arcsec=None, size_pix=None, size_sec=0, use_fft=True, ncpu: int=0):
     if image == outimage:
         return
     time0 = datetime.datetime.now()
@@ -227,7 +268,7 @@ def zarr_to_fits(zarr, outimage):
     ds = xarray.open_zarr(zarr)
     print(f"saving {zarr} to {outimage}")
     # Create a Primary HDU object to encapsulate the data
-    hdu = fits.PrimaryHDU(ds.cube0.transpose().values, fits.Header(ds.attrs['fits_header']))
+    hdu = fits.PrimaryHDU(ds.cube0.astype(np.float32).values.transpose(), fits.Header(ds.attrs['fits_header']))
 
     # Create an HDUList to contain the HDU(s)
     hdulist = fits.HDUList([hdu])
