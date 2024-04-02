@@ -161,7 +161,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
         sigma = np.array([convolve_pix, convolve_pix])
 
         info(f"computing kernel for {sigma}")
-        kernel = create_multidimensional_gaussian_kernel(sigma)
+        kernel = create_multidimensional_gaussian_kernel(sigma).astype(np.float32)
         array = output_ds.cube0.data
         info(f"kernel shape is {kernel.shape}, array shape is {array.shape}")
 
@@ -173,7 +173,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
         convolved_fft = input_fft * kernel_fft[:, :, np.newaxis]
         
         # Convert back to spatial domain
-        convolved_array = da.fft.ifft2(convolved_fft, axes=(0, 1)).real  # .real is used to discard imaginary part
+        convolved_array = da.fft.ifft2(convolved_fft, axes=(0, 1)).real.astype(np.float32)  # .real is used to discard imaginary part
 
         info(f"saving stacked convolved cube dataset {convolved_cube}")
         # Compute the result (or you can use this in further lazy computations)
@@ -268,7 +268,7 @@ def zarr_to_fits(zarr, outimage):
     ds = xarray.open_zarr(zarr)
     print(f"saving {zarr} to {outimage}")
     # Create a Primary HDU object to encapsulate the data
-    hdu = fits.PrimaryHDU(ds.cube0.astype(np.float32).values.transpose(), fits.Header(ds.attrs['fits_header']))
+    hdu = fits.PrimaryHDU(ds.cube0.transpose(), fits.Header(ds.attrs['fits_header']))
 
     # Create an HDUList to contain the HDU(s)
     hdulist = fits.HDUList([hdu])
