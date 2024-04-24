@@ -62,8 +62,8 @@ ratt-parrot:
       dtype: str
       default: '{recipe.pixel_scale}'
     htc_weight:
-      dtype: str
-      default: natural
+      dtype: Union[str,Tuple[str,float]]
+      default: [briggs,0]
     ampcal:
       info: do a step of amplitude calibration
       dtype: bool
@@ -468,12 +468,13 @@ ratt-parrot:
         ms: =recipe.ms
         ms-info-file: '{recipe.ms}.yml'
       skip_if_outputs: exist
+      tags: [foo]
 
     ms-info:
       cab: load-ms-info
       params:
         ms-info-file: =steps.save-ms-info.ms-info-file
-      tags: [lightcurves]
+      tags: [lightcurves, foo, always]
 
     get-albus-info:
       skip: true
@@ -509,14 +510,34 @@ ratt-parrot:
         intervals-out: =steps.ms-info.num_intervals / recipe.htc_cadence
         nchan: 1
         niter: 0 # 10000
+        padding: 2
         auto-threshold: 1
         threshold: 0
         mgain: 1
-        weight: '{recipe.htc_weight}'
-        size: '{recipe.htc_size}'
-        scale: '{recipe.htc_scale}'
-      tags: [lightcurves]
+        weight: =recipe.htc_weight
+        size: =recipe.htc_size
+        scale: =recipe.htc_scale
+      tags: [lightcurves, foo]
       skip_if_outputs: fresh
+
+    # image-uvcut-4htc:
+    #   _use: lib.steps.wsclean.dirty
+    #   params:
+    #     column: CORRECTED_DATA
+    #     prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/images-uvcut/cad{recipe.htc_cadence}'
+    #     intervals-out: =steps.ms-info.num_intervals / recipe.htc_cadence
+    #     minuv-l: 500
+    #     taper-inner-tukey: 100
+    #     nchan: 1
+    #     niter: 0 # 10000
+    #     auto-threshold: 1
+    #     threshold: 0
+    #     mgain: 1
+    #     weight: '{recipe.htc_weight}'
+    #     size: '{recipe.htc_size}'
+    #     scale: '{recipe.htc_scale}'
+    #   tags: [lightcurves]
+    #   skip_if_outputs: fresh
 
     image-4htcpol:
       _use: lib.steps.wsclean.dirty
@@ -554,39 +575,37 @@ ratt-parrot:
         images: =steps.image-*htc.dirty.per-interval
         cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc_cadence}/cube-{recipe.htc_cadence}-dirty.zarr'
         ms: =recipe.ms
+        obs-label: =recipe.obs
         cadence: =recipe.htc_cadence
         convolved-cube: =STRIPEXT(current.cube) + '.convolved.zarr'
+        ratio-cube: =STRIPEXT(current.cube) + '.ratio.zarr'
         convolve-arcsec: =recipe.convolve.arcsec
       skip_if_outputs: fresh
-      tags: [lightcurves]
+      tags: [lightcurves, foo]
 
     cube-4htc-to-fits:
       cab: zarr_to_fits
       params:
         zarr: =steps.cube-4htc.cube
         outimage: =current.zarr + '.fits'
-      skip: true 
       skip_if_outputs: fresh
-      tags: [lightcurves]
+      tags: [lightcurves, cubes_to_fits, foo]
+
+    cube-4htc-ratio-to-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =steps.cube-4htc.ratio-cube
+        outimage: =current.zarr + '.fits'
+      skip_if_outputs: fresh
+      tags: [lightcurves, cubes_to_fits, foo]
 
     cube-4htc-convolved-to-fits:
       cab: zarr_to_fits
       params:
         zarr: =steps.cube-4htc.convolved-cube
         outimage: =current.zarr + '.fits'
-      skip: true 
       skip_if_outputs: fresh
-      tags: [lightcurves]
-
-
-    extract-metadata:
-      cab: extract_fits_metadata
-      params:
-        images: =previous.images
-        timestamps_file: =STRIPEXT(previous.cube) + '.timestamps.p'
-        beams_file: =STRIPEXT(previous.cube) + '.beams.p'
-      skip_if_outputs: fresh
-      tags: [lightcurves]
+      tags: [lightcurves, cubes_to_fits, foo]
 
     clean-cube-4htc:
       cab: stack_time_cube
@@ -617,41 +636,36 @@ ratt-parrot:
               ms: =root.ms
             skip_if_outputs: fresh
           convolve:
-            cab: convolve_xarray_image
+            cab: convolve_xarray_cube_time
             params:
               image: =previous.cube
-              size_arcsec: =root.convolve.arcsec
               size_sec: =root.convolve.time
               outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix}.fits'
             skip: =not recipe.lc-suffix 
             skip_if_outputs: fresh
 
-    cube-convolve:
-      cab: convolve_xarray_image
+    cube-time-convolve:
+      cab: convolve_xarray_cube_time
       params:
-        image: =steps.cube-4htc.cube
-        size_arcsec: =recipe.convolve.arcsec
+        image: =steps.cube-4htc.convolved-cube
         size_sec: =recipe.convolve.time
         outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix}.zarr'
       skip: =not recipe.lc-suffix 
       skip_if_outputs: fresh
-      tags: [lightcurves]
+      tags: [lightcurves, foo]
 
-    export-cube-to-fits:
+    cube-time-convolve-to-fits:
       cab: zarr_to_fits
       params:
         zarr: =previous.outimage
         outimage: =current.zarr + '.fits'
-      skip: true 
       skip_if_outputs: fresh
-      tags: [lightcurves]
-    
+      tags: [lightcurves, foo]
 
     cube-convolve-sub:
-      cab: convolve_xarray_image
+      cab: convolve_xarray_cube_time
       params:
         image: =steps.cube-4htc.cube
-        size_arcsec: =recipe.convolve-sub.arcsec
         size_sec: =recipe.convolve-sub.time
         outimage: =STRIPEXT(current.image) + '{recipe.lc-suffix-sub}.zarr'
       skip: =not recipe.lc-suffix-sub

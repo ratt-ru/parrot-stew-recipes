@@ -51,9 +51,6 @@ def get_freq_axis(hdr):
     else:
         return None
 
-def stack_xarray_cube(images: List[str], cube: str, ms: str, verbose: bool = False, cadence=1, include_freq_axis: bool = False):
-    
-
 
 
 def stack_time_cube(images: List[str], cube: str, ms: str, verbose: bool = False, cadence=1, include_freq_axis: bool = False):

@@ -65,6 +65,8 @@ cabs:
       ms:
         dtype: MS
         required: true
+      obs-label:
+        dtype: str
       cadence:
         dtype: int
       convolve-arcsec:
@@ -74,13 +76,17 @@ cabs:
     outputs:
       cube:
         dtype: Directory
+        mkdir: False
       convolved-cube:
         dtype: Directory
+        mkdir: False
+      ratio-cube:
+        dtype: Directory
+        mkdir: False
 
-
-  convolve_xarray_image:
+  convolve_xarray_cube_time:
     flavour: python
-    command: image_utils_xarr.convolve_cube
+    command: image_utils_xarr.convolve_time_cube
     backend:
       select: native
       native:
@@ -89,18 +95,12 @@ cabs:
       image:
         dtype: Directory
         required: true
-      size_arcsec:
-        dtype: float
-      size_pix:
-        dtype: float
       size_sec:
         dtype: float
-      use_fft:
-        dtype: bool
-        info: use FFT for convolution (only if size_sec=0)
     outputs:
       outimage:
         dtype: Directory
+        mkdir: False
 
   zarr_to_fits:
     flavour: python
@@ -132,7 +132,11 @@ cabs:
 
   extract_lightcurves:
     flavour: python
-    command: image_utils.extract_light_curves
+    command: image_utils_xarr.extract_light_curves
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/xarray
     inputs:
       cube:
         dtype: Directory

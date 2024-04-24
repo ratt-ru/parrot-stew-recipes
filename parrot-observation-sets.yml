@@ -104,10 +104,12 @@ band:
     pixel_scale: 0.8
     htc_size: 3072
     htc_scale: 2.4arcsec
+    htc_weight: [briggs, 0]
     htc_cadence: 1
     wsclean_nchan: 8
     lib.steps.ddfacet.base.params.Image.Cell: 0.8
     psf_size: 6
+    convolve.arcsec: 8
     weight: "briggs 0"
     ddf-precluster-file: dd-regs-lband.reg
     initial-flag-version: cb_flag__target_rfi_after
@@ -133,6 +135,7 @@ band:
     htfc_scale: 4.8arcsec
     htfc_nband: 8
     wsclean_nchan: 6
+    convolve.arcsec: 16
     lib.steps.ddfacet.base.params.Image.Cell: 1.6
     psf_size: 12
     weight: "briggs 0"

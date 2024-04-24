@@ -26,6 +26,7 @@ from astropy.visualization import time_support
 from astropy.table import QTable
 from casacore.tables import table
 import xarray
+import dask
 from xarrayfits import xds_from_fits
 import dask.array as da
 from scipy.ndimage import convolve
@@ -61,6 +62,8 @@ def get_freq_axis(hdr):
 
 def stack_time_cube(images: List[str], cube: str, ms: str, 
                     convolved_cube: str = None,
+                    ratio_cube: str = None,
+                    obs_label: Optional[str] = None,
                     convolve_arcsec: float = None, convolve_pix: float = None,
                     verbose: bool = False, 
                     time_chunking: int = 1e+9, xy_chunking: int = 128, 
@@ -70,6 +73,8 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     # read datasets
     datasets = xds_from_fits(images, prefix="cube")
 
+    # get beams
+    beams = np.array([[ds.cube0.attrs['header'][key] for key in ('BMIN', 'BMAJ', 'BPA')] for ds in datasets])
     # get MS timestamps
     ms_tms = sorted(set(table(ms).getcol("TIME")))
     t0 = ms_tms[0]
@@ -100,7 +105,6 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
             if kw in hdr:
                 del hdr[kw]
         hdr['NAXIS'] = 3
-        # add keywords
     # form up time axis
     hdr['NAXIS3'] = len(grid)
     hdr['CTYPE3'] = 'TIME'
@@ -108,6 +112,9 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     hdr['CRPIX3'] = 1
     hdr['CRVAL3'] = 0
     hdr['CDELT3'] = dt
+    # add label
+    if obs_label:
+        hdr['OBSLABEL'] = obs_label
 
     time_index = [None]*len(grid)
     max_delta = 0
@@ -146,10 +153,13 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     output_ds = xarray.concat(output_datasets, dim="time")
     
     output_ds.attrs['time_grid'] = grid
+    output_ds.attrs['beams'] = beams
     output_ds.attrs['fits_header'] = dict(hdr)
     output_ds.attrs['fits_header'].pop('HISTORY', None)
     output_ds.attrs['fits_header'].pop('COMMENT', None)
+    datacube = output_ds.cube0.data
 
+    computes = []
     # convolve
     if convolved_cube:
         if convolve_pix is None:
@@ -161,39 +171,53 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
         sigma = np.array([convolve_pix, convolve_pix])
 
         info(f"computing kernel for {sigma}")
-        kernel = create_multidimensional_gaussian_kernel(sigma).astype(np.float32)
-        array = output_ds.cube0.data
-        info(f"kernel shape is {kernel.shape}, array shape is {array.shape}")
+        kernel = create_multidimensional_gaussian_kernel(sigma, datacube.shape[:2]).astype(np.float32)
+        info(f"kernel shape is {kernel.shape}, array shape is {datacube.shape}")
 
         # Convert to frequency domain
-        input_fft = da.fft.fft2(array, axes=(0, 1))
-        kernel_fft = da.fft.fft2(kernel, array.shape[:2])
+        input_fft = da.fft.fft2(datacube, axes=(0, 1))
+        kernel_fft = da.fft.fft2(kernel, datacube.shape[:2])
         
         # Perform multiplication in frequency domain
         convolved_fft = input_fft * kernel_fft[:, :, np.newaxis]
         
         # Convert back to spatial domain
-        convolved_array = da.fft.ifft2(convolved_fft, axes=(0, 1)).real.astype(np.float32)  # .real is used to discard imaginary part
+        conv_cube = da.fft.ifft2(convolved_fft, axes=(0, 1)).real.astype(np.float32)  # .real is used to discard imaginary part
 
         info(f"saving stacked convolved cube dataset {convolved_cube}")
         # Compute the result (or you can use this in further lazy computations)
-        conv_ds = output_ds.assign(cube0=(output_ds.dims, convolved_array)).chunk(chunks=chunks)
-        conv_ds.to_zarr(convolved_cube, mode="w")
+        conv_ds = output_ds.assign(cube0=(output_ds.dims, conv_cube)).chunk(chunks=chunks)
+        computes.append(conv_ds.to_zarr(convolved_cube, mode="w", compute=False))
+        #conv_ds.to_zarr(convolved_cube, mode="w")
+
+    # 
+    if ratio_cube:
+        ratio = conv_cube / datacube
+        ratio[datacube==0] = 0
+        ratio_ds = output_ds.assign(cube0=(output_ds.dims, ratio)).chunk(chunks=chunks)
+        computes.append(ratio_ds.to_zarr(ratio_cube, mode="w", compute=False))
 
     # save to zarr
     info(f"saving stacked cube dataset {cube}")
     output_ds = output_ds.chunk(chunks=chunks)
-    output_ds.to_zarr(cube, mode="w")
+    computes.append(output_ds.to_zarr(cube, mode="w", compute=False))
+    info(f"invoking dask.compute")
+    dask.compute(*computes)
     info(f"done")
 
 
 def create_multidimensional_gaussian_kernel(sigma: List[float], size: Optional[List[int]] = None):
+    sigma = np.array(sigma)
     if size is None:
-        size = np.round(2 * (3.0 * sigma) + 1)
-    size[size % 2 == 0] += 1
+        size = np.round(2 * (3.0 * sigma) + 1).astype(int)
+        size[size % 2 == 0] += 1
     
     # Generate a grid of coordinates centered at 0, for each dimension
-    axes = [np.arange(-sz // 2 + 1., sz // 2 + 1.) for sz in size]
+    axes = [np.array(list(range(0, sz//2)) + list(range(-sz//2, 0))       # even: 0 1 -2 -1
+                        if sz % 2 == 0 else 
+                     list(range(0, sz//2+2)) + list(range(-sz//2-1, 0))    # odd: 0 1 2 -2 -1
+                    ) 
+            for sz in size]
     xx = np.meshgrid(*axes, indexing="ij")
 
     xx = [x**2 / (2*sig**2) if sig != 0 else np.zeros_like(x) for x, sig in zip(xx, sigma)]
@@ -203,61 +227,31 @@ def create_multidimensional_gaussian_kernel(sigma: List[float], size: Optional[L
     
     # Normalize the kernel
     kernel /= np.sum(kernel)
+
+    print(kernel)
     
     return kernel
 
-def convolve_time_cube(image, outimage, size_arcsec=None, size_pix=None, size_sec=0, use_fft=True, ncpu: int=0):
+def convolve_time_cube(image, outimage, size_sec=0):
     if image == outimage:
         return
-    time0 = datetime.datetime.now()
-    def logtime():
-        return str(datetime.datetime.now() - time0)
-
     ds = xarray.open_zarr(image)
-
     hdr = ds.attrs['fits_header']
-
-    if size_pix is None:
-        if size_arcsec is None:
-            size_arcsec = 3600*(hdr['BMAJ'] + hdr['BMIN'])/2
-        
-        scale = 3600*hdr['CDELT1']
-        size_pix = abs(size_arcsec / scale) / 2.355 # convert FWHM to sigma
-
     size_timeslots = size_sec / hdr['CDELT3']
-
-    if use_fft:
-        sigma = np.array([0, 0, size_timeslots])
-    else:
-        sigma = np.array([size_pix, size_pix, size_timeslots])
-
-    print(f"computing kernel for {sigma}")
-    kernel = create_multidimensional_gaussian_kernel(sigma)
-    print(f"kernel shape is {kernel.shape}")
-
     array = ds.cube0.data
 
-    if use_fft:
-        # Convert to frequency domain
-        input_fft = da.fft.fftn(array, axes=(2,))
-        kernel_fft = da.fft.fft(kernel[0, 0, :], array.shape[2])
-        
-        # Perform multiplication in frequency domain
-        convolved_fft = input_fft * kernel_fft[np.newaxis, np.newaxis, :]
-        
-        # Convert back to spatial domain
-        convolved_array = da.fft.ifftn(convolved_fft, axes=(2,)).real  # .real is used to discard imaginary part
-    else:        
+    kernel = create_multidimensional_gaussian_kernel([size_timeslots], [array.shape[2]]).astype(np.float32)
+    print(f"kernel shape is {kernel.shape}")
 
-        # Function to apply convolution over a block
-        def convolve_block(block):
-            return convolve(block, kernel, mode='reflect')
-
-        # Use map_overlap to apply the convolution to each block, including overlaps
-        # The depth should match the kernel size to ensure neighbors are considered
-        depth = tuple(np.ceil(sz//2) for sz in kernel.shape)
-        print(f"using map_overlap with depth {depth}")
-        convolved_array = array.map_overlap(convolve_block, depth=depth, boundary='reflect')
+    # Convert to frequency domain
+    input_fft = da.fft.fft(array, axis=2)
+    kernel_fft = da.fft.fft(kernel, array.shape[2])
+    
+    # Perform multiplication in frequency domain
+    convolved_fft = input_fft * kernel_fft[np.newaxis, np.newaxis, :]
+    
+    # Convert back to spatial domain
+    convolved_array = da.fft.ifft(convolved_fft, axis=2).real.astype(np.float32)  # .real is used to discard imaginary part
 
     print(f"saving convolved cube")
     # Compute the result (or you can use this in further lazy computations)
@@ -276,18 +270,6 @@ def zarr_to_fits(zarr, outimage):
 
     # Don't forget to close the HDUList to free up resources
     hdulist.close()
-
-def extract_fits_metadata(images, timestamps_file, beams_file):
-    print(f"extracting timestamps and beam info from {len(images)} images")
-    timestamps = []
-    beams = []
-    for i, image in enumerate(images):
-        ff = fits.open(image)
-        tm = Time(ff[0].header['DATE-OBS'])
-        timestamps.append(tm.mjd)
-        beams.append(list(ff[0].header[key] for key in ('BMIN', 'BMAJ', 'BPA')))
-    pickle.dump(timestamps, open(timestamps_file, "wb"))
-    pickle.dump(beams, open(beams_file, "wb"))
 
 cat_tab = None
 fluxes = None
@@ -339,8 +321,8 @@ def _extract_curve(isrc: int, srcnum: int):
         coord = src['pos']
         lc_file = f"{chunk_dir}/src{srcnum:06d}{filelabel}"
 
-        lightcurve = img[x,y,:]
-        stddev = img[x-stdbox_r:x+stdbox_r+1,y-stdbox_r:y+stdbox_r+1,:].std(axis=(0,1))
+        lightcurve = img[x,y,:].values
+        stddev = img[x-stdbox_r:x+stdbox_r+1,y-stdbox_r:y+stdbox_r+1,:].values.std(axis=(0,1))
         # mask gaps
         mask = lightcurve==0
 
@@ -549,6 +531,7 @@ def _extract_curve(isrc: int, srcnum: int):
                 ef.write(f"meta: {table_meta}\n")
             pickle.dump((lightcurve, timestamps, stddev), open(f"{lc_file}.p"))
 
+        print(f"light curve {srcnum} done")
         return srcnum, pd.DataFrame(dfdict, index=[srcnum])
 
     except Exception as exc:
@@ -612,8 +595,8 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     labels = [set(lbl.split(":")) for lbl in cat_tab['labels']]
 
     # read image cube
-    ff = fits.open(cube)
-    hdr = ff[0].header
+    dataset = xarray.open_zarr(cube)
+    hdr = fits.Header(dataset.attrs['fits_header'])
     global freq0, freq1
     freq0 = hdr.get("FREQ0MHZ", None)
     freq1 = hdr.get("FREQ1MHZ", None)
@@ -621,7 +604,7 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     wcs = WCS(hdr)
     while len(wcs.array_shape) > 2:
         wcs = wcs.dropaxis(len(wcs.array_shape) - 1)
-    img = ff[0].data.T
+    img = dataset.cube0
 
     # build array of MJD timestamps
     t0 = Time(hdr['DATE-OBS'], format='fits') + TimeDelta(hdr['CRVAL3'], format=hdr['CUNIT3'])
@@ -734,25 +717,31 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
         _export_regions(sources[i0:i1], 
                         f"{chunk_dir}/regions-chunk{ichunk:05d}.reg",
                         default_color=default_color)
+    
+    # sort sources by X/Y chunking
+    chszx, chszy = dataset.cube0.chunksizes['cube0-3'], dataset.cube0.chunksizes['cube0-2']
+    chunk_order = sorted((x // chszx[0] +  (y // chszy[0]) * 10000, isrc) for isrc, (x, y) in img_xy.items())
+    # for n, isrc in chunk_order[:10]:
+    #     print(n, img_xy[isrc])
+    # return 0
 
-        if ncpu > 1:
-            with ProcessPoolExecutor(ncpu) as pool:
-                # submit each iterant to pool
-                futures = [pool.submit(_extract_curve, i0+i, isrc) for i, isrc in enumerate(sources[i0:i1])]
-                        
-                results = [f.result() for f in futures]
+    if ncpu > 1:
+        with ProcessPoolExecutor(4) as pool: # ncpu) as pool:
+            # submit each iterant to pool
+            futures = [pool.submit(_extract_curve, i, isrc) for i, (_, isrc) in enumerate(chunk_order)]
+            results = list(as_completed(futures))
+    else:
+        results = []
+        for i, (_, isrc) in enumerate(chunk_order):
+            results.append(_extract_curve(i, isrc))
+
+    stats = [st for _, st in results if st is not None]
+
+    if stats:
+        if stats_df is None:
+            stats_df = pd.concat(stats, ignore_index=True)
         else:
-            results = []
-            for i, isrc in enumerate(sources[i0:i1]):
-                results.append(_extract_curve(i0+i, isrc))
-
-        stats = [st for _, st in results if st is not None]
-
-        if stats:
-            if stats_df is None:
-                stats_df = pd.concat(stats, ignore_index=True)
-            else:
-                stats_df = pd.concat([stats_df]+stats, ignore_index=True)
+            stats_df = pd.concat([stats_df]+stats, ignore_index=True)
 
     if statsfile:
         pickle.dump(stats_df, open(statsfile, "wb"))
