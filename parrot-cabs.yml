@@ -202,10 +202,10 @@ cabs:
         required: true
       ra0:
         dtype: str
-        required: true
       dec0:
         dtype: str
-        required: true
+      mfs_image:
+        dtype: File
       max_radius_deg:
         dtype: float
         required: true
@@ -454,30 +454,6 @@ lib:
             subtract: '{steps.mask-except-rrat.mask}'
             invert: true
             mask: '{recipe.prefix}-multiplicative-mask.fits'
-
-    upsample-fix:
-      inputs:
-        files:
-          dtype: List[File]
-      for_loop:
-        var: ff
-        over: files
-        scatter: 4
-      steps:
-        fix:
-          cab:
-            flavour: python-code
-            inputs:
-              filename:
-                dtype: File
-            command: |
-              from astropy.io import fits
-              ff = fits.open(filename)
-              ff[0].data[ff[0].data==1] = 0
-              ff.writeto(filename, overwrite=True)
-              print("wrote {filename}")
-          params:
-            filename: =recipe.ff
 
   steps: 
     wsclean:

@@ -1,0 +1,20 @@
+# use virtual_env breifast for now
+cabs:
+  breifast.make-baseline-image:
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/breizorro
+
+  breifast.process-residual-cube:
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/breizorro
+
+  breifast.render:
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/breizorro
+

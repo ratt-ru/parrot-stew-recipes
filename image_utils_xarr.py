@@ -666,7 +666,12 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
             sel_sources.update(sources)
 
     sources = sorted(sel_sources)
-    print(f"{len(sources)} selected for lightcurves")
+    if nsrc is not None and len(sources) > nsrc:
+        sources = sources[:nsrc]
+        print(f"  restricting to first {len(sources)}")
+
+    nsrc = len(sources)
+    print(f"{nsrc} sources selected for lightcurve extraction")
     if not sources:
         return
 
@@ -685,15 +690,6 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
 
     sources = list(posdict.values())[::-1]
     print(f"eliminating non-unique and out-of-bounds pixel positions leaves {len(sources)} sources")
-
-    # print the ones eliminated
-    print(f"  (eliminated: {sorted(set(sel_sources) - set(sources))})")
-
-    if nsrc is not None and len(sources) > nsrc:
-        sources = sources[:nsrc]
-        print(f"  restricting to first {len(sources)}")
-
-    nsrc = len(sources)
 
     # now start extracting
     if os.path.exists(outdir):
@@ -729,7 +725,7 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
         with ProcessPoolExecutor(4) as pool: # ncpu) as pool:
             # submit each iterant to pool
             futures = [pool.submit(_extract_curve, i, isrc) for i, (_, isrc) in enumerate(chunk_order)]
-            results = list(as_completed(futures))
+            results = [f.result() for f in as_completed(futures)]
     else:
         results = []
         for i, (_, isrc) in enumerate(chunk_order):

@@ -1,0 +1,53 @@
+config.run.node:
+  janis:
+    dirs.temp: /scratch/oms/tmp
+    ncpu: 64
+
+obs:
+  SMC-U1:
+    ms: msdir/1581006914_sdp_l0_1024ch_SMC.ms
+    dirs.sub: obs-smc-u1
+    band: UHF
+    column.residual: CORRECTED_DATA
+    minuv-l: 250
+    taper-inner-tukey: 100
+
+  WDP-E5:
+    ms: msdir/WD_pulsar/epoch5/1705730728_sdp_l0_1024ch_J1912-4410.ms
+    dirs.sub: obs-wdp5
+    band: UHF
+    column.residual: CORRECTED_DATA
+
+  WDP-E6:
+    ms: msdir/WD_pulsar/epoch6/1706936255_sdp_l0_1024ch_J1912-4410.ms
+    dirs.sub: obs-wdp6
+    band: UHF
+    column.residual: CORRECTED_DATA
+
+  3C445:
+    ms: msdir/3C445/1622255335_sdp_l0-3C445-corr.ms/
+    dirs.sub: obs-3c445
+    band: L
+    column.residual: RESIDUAL_DATA
+    mfs-image: obs-3c445/OD_3C445_4peel_post-MFS-image.fits
+
+band:
+  UHF:
+    htc.size: 3072
+    htc.scale: 4.8arcsec
+    htc.weight: "briggs 0"
+    htc.convolve.arcsec: 16
+    # htfc.size: 2048
+    # htfc.scale: 4.8arcsec
+    # htfc.nband: 8
+    lightcurves-within: 1deg
+
+  L:
+    htc.size: 3072
+    htc.scale: 2.4arcsec
+    htc.weight: "briggs 0"
+    htc.convolve.arcsec: 8
+    # htfc.size: 2048
+    # htfc.scale: 4.8arcsec
+    # htfc.nband: 8
+    lightcurves-within: 1deg

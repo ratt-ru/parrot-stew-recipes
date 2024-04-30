@@ -1,0 +1,103 @@
+#!/usr/bin/env -S stimela run
+
+_include:
+  - parrot-cabs.yml
+  - (breifast)breifast.yml
+
+## this augments the standard 'opts' config section to tweak logging settings
+opts:
+  log:
+    dir: logs/log-{config.run.datetime}
+    name: log-{info.fqname}
+    nest: 2
+    symlink: log
+  backend:
+    select: singularity
+    rlimits:
+      NOFILE: 100000  # set high limit on number of open files
+
+tron-breifast:
+  name: tron-breifast
+  info: "Perform breifast analysis on a series of timescales"
+
+  inputs:
+    mfs-image:
+      aliases: [mbi.flux-image]
+      info: MFS image used to make baseline flux map
+    cube:
+      dtype: Directory
+      required: true
+      info: raw (highest) time cadence cube (as .zarr)
+    cube-fits:
+      dtype: File
+      info: raw (highest) time cadence cube (as .fits)
+      default: '{current.cube}.fits'
+    timescales: 
+      dtype: List[float]
+      default: [0]
+      info: list of timescales to process, in units of seconds. Use a 0 to process the raw cube
+
+  aliases:
+    mbi-max-filter-size: [mbi.max-filter-size]
+    boost-threshold: [procres.boost-threshold]
+    auto-reject-snr-threshold: [procres.auto-reject-snr-threshold]
+    auto-reject-noise-threshold: [procres.auto-reject-noise-threshold]
+    auto-reject-noise-boxsize: [procres.auto-reject-noise-boxsize]
+    noise-estimator-boxsize: [procres.boxsize]
+    candidate-threshold: [procres.threshold]
+    detection-threshold: [render.threshold]
+
+  for_loop:
+    var: timescale
+    over: timescales
+
+  steps:
+    mbi:
+      cab: breifast.make-baseline-image
+      info: makes a baseline flux image for detections
+      params:
+        cube-file: =recipe.cube-fits
+        max-filter-size: 15
+      skip_if_outputs: fresh
+
+    time-convolve:
+      cab: convolve_xarray_cube_time
+      info: convolves cube to given timescale
+      params:
+        image: =recipe.cube
+        size_sec: =recipe.timescale
+        outimage: =STRIPEXT(current.image) + '-{recipe.timescale}s.zarr'
+      skip: =recipe.timescale == 0 
+      skip_if_outputs: fresh
+
+    time-convolve-to-fits:
+      cab: zarr_to_fits
+      info: converts convolved cube to FITS
+      params:
+        zarr: =previous.outimage
+        outimage: =current.zarr + '.fits'
+      skip: =recipe.timescale == 0 
+      skip_if_outputs: fresh
+
+    procres:
+      cab: breifast.process-residual-cube
+      info: processes cube and generates candidate catalog
+      params:
+        cube-file: =IF(recipe.timescale == 0, recipe.cube-fits, previous.outimage)
+        baseline-image: =steps.mbi.baseline-image
+        ncpu: -2
+        threshold: 7
+        boost-threshold: 2
+        boxsize: 400
+        auto-reject-noise-boxsize: 150
+      skip_if_outputs: fresh      
+
+    render:
+      cab: breifast.render
+      info: filters candidate catalog to make final detection catalog
+      params:
+        catalog: =previous.output-catalog
+        output-catalog: =STRIPEXT(STRIPEXT(current.catalog)) + ".detections.ecsv"
+        output-regions: =STRIPEXT(STRIPEXT(current.catalog)) + ".detections.reg"
+        threshold: 8
+      skip_if_outputs: fresh      

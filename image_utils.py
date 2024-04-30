@@ -591,7 +591,12 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
             sel_sources.update(sources)
 
     sources = sorted(sel_sources)
-    print(f"{len(sources)} selected for lightcurves")
+    if nsrc is not None and len(sources) > nsrc:
+        sources = sources[:nsrc]
+        print(f"Restricting to first {len(sources)} sources")
+
+    nsrc = len(sources)
+    print(f"{nsrc} selected for lightcurves")
     if not sources:
         return
 
@@ -613,12 +618,6 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
 
     # print the ones eliminated
     print(f"  (eliminated: {sorted(set(sel_sources) - set(sources))})")
-
-    if nsrc is not None and len(sources) > nsrc:
-        sources = sources[:nsrc]
-        print(f"  restricting to first {len(sources)}")
-
-    nsrc = len(sources)
 
     # now start extracting
     if os.path.exists(outdir):

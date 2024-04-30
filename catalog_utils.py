@@ -16,7 +16,7 @@ import Tigger
 
 def match_catalogs(master_catalog: str, 
                     catalogs: Dict[str, Tuple[str, float, str]], 
-                    ra0: float, dec0: float,     
+                    ra0: Optional[float] = None, dec0: Optional[float] = None, mfs_image: Optional[str] = None,     
                     max_radius_deg: Optional[float] = None,     # max distance from centre
                     # matches sources from region files
                     interesting_regions: List[str] = [],  # region files for "interesting" sources
@@ -30,8 +30,17 @@ def match_catalogs(master_catalog: str,
     
     # load model, filter, and convert to coordinates
     num_catalogs = len(catalogs)
-    centre = SkyCoord(ra0, dec0, frame=FK5)
-
+    if ra0 is None or dec0 is None:
+        if mfs_image is None:
+            raise RuntimeError("either mfs_image or ra0 and dec0 must be specified")
+        hdu = fits.open(mfs_image)[0]
+        wcs = WCS(hdu.header).dropaxis(-1).dropaxis(-1)
+        centre = wcs.pixel_to_world(hdu.data.shape[2] // 2, hdu.data.shape[3])
+        print(f"Got field centre from {mfs_image}: {centre}")
+    else:
+        centre = SkyCoord(ra0, dec0, frame=FK5)
+        print(f"Field centre specified as {centre}")
+    
     cats = OrderedDict()
 
     for icat, (label, (catalog, xmatch_arcsec, cat_type)) in enumerate(catalogs.items()):

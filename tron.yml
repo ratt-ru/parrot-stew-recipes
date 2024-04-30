@@ -1,0 +1,277 @@
+#!/usr/bin/env -S stimela run
+
+_include:
+  - parrot-cabs.yml
+  - tron-breifast.yml
+  - local-env.yml[optional]
+
+## this augments the standard 'opts' config section to tweak logging settings
+opts:
+  log:
+    dir: logs/log-{config.run.datetime}
+    name: log-{info.fqname}
+    nest: 2
+    symlink: log
+  backend:
+    select: singularity
+    rlimits:
+      NOFILE: 100000  # set high limit on number of open files
+
+cabs:
+  breifast.make-baseline-image:
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/breizorro
+
+  breifast.process-residual-cube:
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/breizorro
+
+  breifast.render:
+    backend:
+      select: native
+      native:
+        virtual_env: ~/.venv/breizorro
+
+tron:
+  name: tron
+  info: "Perform transient analysis on precalibrated MS"
+
+  assign:
+    dir-out: '{recipe.dirs.base}/{recipe.dirs.sub}{recipe.output-suffix}'                     # output products go here
+    image-prefix: '{recipe.dir-out}/im{info.suffix}/im{info.suffix}'  # prefix for image names at each step
+    log.dir: '{recipe.dir-out}/logs/log-{config.run.datetime}'          # put logs into output dir
+    # some more directory assignments
+    dirs:
+      ms: ../msdir       # MSs live here
+      temp: ./tmp # "{config.run.env.HOME}/tmp"   # temp files go here
+      base: .            # base project directory -- directory of recipe by default, but see below
+
+    # extra lightcurve suffix, added if convolving
+    lc-suffix: "-{recipe.htc.convolve.arcsec}asec"
+    lc-conv-suffix: "-{recipe.htc.convolve.time:.0f}s{recipe.lc-suffix}"
+
+  assign_based_on:
+    _include: tron-observation-sets.yml
+
+  inputs:
+    obs:
+      info: "Selects observation, see transient-observation-sets.yml for list of observations"
+      required: true
+    output-suffix:
+      dtype: str
+      default: ''
+    dir.out: 
+      dtype: str
+    column:
+      data: 
+        default: CORRECTED_DATA
+      model: 
+        default: MODEL_DATA
+      residual: 
+        default: RESIDUAL_DATA
+    mfs-image:
+      dtype: File
+    htc:
+      cadence:
+        dtype: int
+        default: 1
+      size:
+        dtype: int
+        required: true
+      scale:
+        dtype: str
+        required: true
+      weight:
+        dtype: Union[str,Tuple[str,float]]
+        default: [briggs,0]
+      convolve:
+        arcsec:
+          dtype: float
+          default: 8
+        time:
+          dtype: float
+          default: 120
+    nlc:
+      info: number of lightcurves to extract, default is all
+      dtype: int
+    publish-plots:
+      dtype: bool
+      default: false
+    publish-plot-title:
+      default: 'Observation {recipe.obs}: peak $ {{peak_ujy:.0f}}\pm{{peak_std_ujy:.0f}} $ uJy'
+
+  aliases:
+    minuv-l:
+      - (wsclean).minuv-l
+    taper-inner-tukey:
+      - (wsclean).taper-inner-tukey
+
+  steps:
+    add-residual-data:
+      cab: msutils.addcol
+      params:
+        msname: =recipe.ms
+        colname: =recipe.column.residual
+      tags: [makeres, never]
+
+    subtract-model:
+      cab: taql.update
+      params: 
+        ms: =recipe.ms
+        commands: =LIST("set", "{recipe.column.residual}={recipe.column.data}-{recipe.column.model}")
+      tags: [makeres, never]
+
+    save-ms-info:
+      cab: save-ms-info
+      params:
+        ms: =recipe.ms
+        ms-info-file: '{recipe.ms}.yml'
+      skip_if_outputs: exist
+      tags: [lightcurves, cubes, always]
+
+    ms-info:
+      cab: load-ms-info
+      params:
+        ms-info-file: =steps.save-ms-info.ms-info-file
+      tags: [lightcurves, cubes, always]
+
+    image-htc:
+      _use: lib.steps.wsclean.dirty
+      params:
+        ms: =recipe.ms
+        column: =recipe.column.residual
+        prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc.cadence}/images/cad{recipe.htc.cadence}'
+        intervals-out: =steps.ms-info.num_intervals / recipe.htc.cadence
+        no-dirty: true
+        nchan: 1
+        niter: 0 # 10000
+        padding: 3
+        auto-threshold: 1
+        threshold: 0
+        mgain: 1
+        weight: =recipe.htc.weight
+        size: =recipe.htc.size
+        scale: =recipe.htc.scale
+      tags: [lightcurves, cubes]
+      skip_if_outputs: fresh
+
+    stack-cube-htc:
+      cab: stack_xarray_cube
+      params:
+        images: =steps.image-htc.restored.per-interval
+        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc.cadence}/cube-{recipe.htc.cadence}-dirty.zarr'
+        ms: =recipe.ms
+        obs-label: =recipe.obs
+        cadence: =recipe.htc.cadence
+        convolved-cube: =STRIPEXT(current.cube) + '{recipe.lc-suffix}.zarr'
+        ratio-cube: =STRIPEXT(current.cube) + '.ratio.zarr'
+        convolve-arcsec: =recipe.htc.convolve.arcsec
+      skip_if_outputs: fresh
+      tags: [lightcurves, cubes]
+
+    cube-to-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =steps.stack-cube-htc.cube
+        outimage: =current.zarr + '.fits'
+      skip_if_outputs: fresh
+      tags: [lightcurves, cubes_to_fits, cubes]
+
+    cube-ratio-to-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =steps.stack-cube-htc.ratio-cube
+        outimage: =current.zarr + '.fits'
+      skip_if_outputs: fresh
+      tags: [lightcurves, cubes_to_fits, cubes]
+
+    cube-convolved-to-fits:
+      cab: zarr_to_fits
+      params:
+        zarr: =steps.stack-cube-htc.convolved-cube
+        outimage: =current.zarr + '.fits'
+      skip_if_outputs: fresh
+      tags: [lightcurves, cubes_to_fits, cubes]
+
+    breifast:
+      recipe: tron-breifast
+      params:
+        mfs-image: =recipe.mfs-image
+        cube: =steps.stack-cube-htc.cube
+        timescales: [0,30,60,120,240,480]
+      tags: [breifast]
+
+    source-finder:
+      cab: bdsf.catalog
+      params:
+        image: =recipe.mfs-image
+        thresh_pix: 4
+        thresh_isl: 3
+        rms_box: [100,20]
+        rms_map: false
+        #flagging_opts: true
+        #flag_maxsize_bm: 10
+        catalog_format: ascii
+        outfile_gaul: =STRIPEXT(current.image) + '.gaul'
+        outfile_srl: =STRIPEXT(current.image) + '.srl'
+      skip_if_outputs: fresh
+      tags: [catalog, never]    
+
+    make-master-source-catalog:
+      tags: [catalog, never]    
+      cab: make-master-catalog
+      params:
+        master_catalog: "{recipe.dirs.sub}/mastercat.ecsv"
+        mfs_image: =recipe.mfs-image
+        max_radius_deg: 1.5
+        catalogs: 
+          base: [=steps.source-finder.outfile_gaul, 0, main]
+
+    extract-lightcurves:
+      info: extracts lightcurves from convolved cube
+      cab: extract_lightcurves
+      params:
+        cube: =steps.stack-cube-htc.convolved-cube
+        outdir: '{recipe.dir-out}/lc{recipe.htc.cadence}{recipe.lc-suffix}'
+        catalog: =steps.make-master-source-catalog.master_catalog
+        regfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.reg'
+        statsfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.stats.p'
+        output_file_label: "-{recipe.obs}"
+        srctype: P
+        minflux: 3uJy
+        flag_excess_std: 3
+        within: =recipe.lightcurves-within
+        nsrc: =recipe.nlc
+        ncpu: =root.ncpu
+        # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
+        fluxcols: [flux_base]
+        plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
+    extract-lightcurves-conv:
+      info: extracts lightcurves from convolved cube
+      cab: extract_lightcurves
+      params:
+        cube: =steps.cube-time-convolve.outimage
+        outdir: '{recipe.dir-out}/lc{recipe.htc.cadence}{recipe.lc-conv-suffix}'
+        catalog: =steps.make-master-source-catalog.master_catalog
+        regfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.reg'
+        statsfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.stats.p'
+        output_file_label: "-{recipe.obs}"
+        srctype: P
+        minflux: 3uJy
+        flag_excess_std: 3
+        within: =recipe.lightcurves-within
+        nsrc: =recipe.nlc
+        ncpu: =root.ncpu
+        # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
+        fluxcols: [flux_base]
+        plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)
+      skip_if_outputs: fresh
+      tags: [lightcurves]
+
