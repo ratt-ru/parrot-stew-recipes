@@ -228,7 +228,7 @@ tron:
       tags: [catalog, never]    
       cab: make-master-catalog
       params:
-        master_catalog: =STRIPEXT(recipe.mfs-image) + "./mastercat.ecsv"
+        master_catalog: =STRIPEXT(recipe.mfs-image) + ".mastercat.ecsv"
         mfs_image: =recipe.mfs-image
         max_radius_deg: 1.5
         catalogs: 
@@ -254,7 +254,7 @@ tron:
         fluxcols: [flux_base]
         plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)
       skip_if_outputs: fresh
-      tags: [lightcurves]
+      tags: [lightcurves, never]
 
     extract-lightcurves-conv:
       info: extracts lightcurves from convolved cube
@@ -276,5 +276,5 @@ tron:
         fluxcols: [flux_base]
         plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)
       skip_if_outputs: fresh
-      tags: [lightcurves]
+      tags: [lightcurves, never]
 
