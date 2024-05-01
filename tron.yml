@@ -1,4 +1,4 @@
-#!/usr/bin/env -S stimela run
+#!/usr/bin/env -S stimela run -l
 
 _include:
   - parrot-cabs.yml

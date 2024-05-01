@@ -82,7 +82,7 @@ obs:
     ms: msdir/3C445/1622255335_sdp_l0-3C445-corr.ms/
     dirs.sub: obs-3c445
     band: L
-    column.residual: RESIDUAL_DATA
+    use-wsclean-subtract: true
     mfs-image: obs-3c445/OD_3C445_4peel_post-MFS-image.fits
 
 band:
