@@ -86,7 +86,7 @@ tron-breifast:
         cube-file: =IF(recipe.timescale == 0, recipe.cube-fits, previous.outimage)
         baseline-image: =steps.mbi.baseline-image
         ncpu: -2
-        threshold: 7
+        threshold: 6
         boost-threshold: 2
         boxsize: 400
         auto-reject-noise-boxsize: 150
@@ -99,5 +99,5 @@ tron-breifast:
         catalog: =previous.output-catalog
         output-catalog: =STRIPEXT(STRIPEXT(current.catalog)) + ".detections.ecsv"
         output-regions: =STRIPEXT(STRIPEXT(current.catalog)) + ".detections.reg"
-        threshold: 8
+        threshold: 7
       skip_if_outputs: fresh      

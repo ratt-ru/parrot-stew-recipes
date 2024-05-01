@@ -5,9 +5,13 @@ config.run.node:
   baker:
     dirs.temp: ./tmp
     ncpu: 64
+  com08:
+    dirs.temp: ./tmp
+    ncpu: 48
   DEFAULT: {}
 
 obs:
+  # PARROTS
   L1:
     ms: ../msdir/1622491578_sdp_l0-J2009_2026-corr.ms   # L deep 1
     dir-out: obs-l1-qc2/im4htc-cad1
@@ -57,7 +61,6 @@ obs:
     deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
 
-
   SMC-U1:
     ms: msdir/1581006914_sdp_l0_1024ch_SMC.ms
     dirs.sub: obs-smc-u1
@@ -83,6 +86,49 @@ obs:
     dirs.sub: obs-3c445
     band: L
     deep-image: obs-3c445/OD_3C445_4peel_post-MFS-image.fits
+
+  T16R02C06a:
+    ms: mgpls/1543635069_sdp_l0-T16R02C06-corr.ms
+    dirs.sub: mgpls/T16R02C06a
+    band: L
+    use-wsclean-subtract: true
+    mfs-image: mgpls/T16R02C06-MFS-image.fits
+
+  T16R02C06b:
+    ms: mgpls/1543664600_sdp_l0-T16R02C06-corr.ms
+    dirs.sub: mgpls/T16R02C06b
+    band: L
+    use-wsclean-subtract: true
+    mfs-image: mgpls/T16R02C06-MFS-image.fits
+
+  T16R02C04a:
+    ms: mgpls/1543664600_sdp_l0-T16R02C04-corr.ms
+    dirs.sub: mgpls/T16R02C04a
+    band: L
+    use-wsclean-subtract: true
+    mfs-image: mgpls/T16R02C06-MFS-image.fits
+
+  T16R02C04b:
+    ms: mgpls/1543635069_sdp_l0-T16R02C04-corr.ms
+    dirs.sub: mgpls/T16R02C04b
+    band: L
+    use-wsclean-subtract: true
+    mfs-image: mgpls/T16R02C04-MFS-image.fits
+
+  T16R02C02a:
+    ms: mgpls/1543664600_sdp_l0-T16R02C02-corr.ms
+    dirs.sub: mgpls/T16R02C02a
+    band: L
+    use-wsclean-subtract: true
+    mfs-image: mgpls/T16R02C02-MFS-image.fits
+
+  T16R02C02b:
+    ms: mgmgpls/1543635069_sdp_l0-T16R02C02-corr.ms
+    dirs.sub: mgpls/T16R02C02b
+    band: L
+    use-wsclean-subtract: true
+    mfs-image: mgpls/T16R02C02-MFS-image.fits
+
 
 band:
   UHF:
