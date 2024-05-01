@@ -73,12 +73,14 @@ obs:
     ms: msdir/WD_pulsar/epoch5/1705730728_sdp_l0_1024ch_J1912-4410.ms
     dirs.sub: obs-wdp5
     band: UHF
+    deep-image: obs-wdp6/img_1706936255_sdp_l0_1024ch_J1912-4410.ms_pcalmask-MFS-image.fits
     column.residual: CORRECTED_DATA
 
   WDP-E6:
     ms: msdir/WD_pulsar/epoch6/1706936255_sdp_l0_1024ch_J1912-4410.ms
     dirs.sub: obs-wdp6
     band: UHF
+    deep-image: obs-wdp6/img_1706936255_sdp_l0_1024ch_J1912-4410.ms_pcalmask-MFS-image.fits
     column.residual: CORRECTED_DATA
 
   3C445:
