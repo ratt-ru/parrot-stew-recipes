@@ -21,9 +21,9 @@ tron-breifast:
   info: "Perform breifast analysis on a series of timescales"
 
   inputs:
-    mfs-image:
+    deep-image:
       aliases: [mbi.flux-image]
-      info: MFS image used to make baseline flux map
+      info: deep image used to make baseline flux map
     cube:
       dtype: Directory
       required: true

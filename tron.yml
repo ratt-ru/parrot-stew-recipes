@@ -52,81 +52,81 @@ tron:
 
     # extra lightcurve suffix, added if convolving
     lc-suffix: "-{recipe.htc.convolve.arcsec}asec"
-    lc-conv-suffix: "-{recipe.htc.convolve.time:.0f}s{recipe.lc-suffix}"
+    # lc-conv-suffix: "-{recipe.htc.convolve.time:.0f}s{recipe.lc-suffix}"
 
   assign_based_on:
     _include: tron-observation-sets.yml
 
   inputs:
     obs:
-      info: "Selects observation, see transient-observation-sets.yml for list of observations"
+      info: "Selects observation by label -- edit tron-observation-sets.yml"
       required: true
     dir-out:
-      info: output directory where cubes will be generated
+      info: output directory where cubes and other products will be generated
       default: '{recipe.dirs.base}/{recipe.dirs.sub}/imhtc-cad{recipe.htc.cadence}'  
     column:
       data: 
+        info: corrected visibilities column
         default: CORRECTED_DATA
       model: 
+        info: model visibilities column which will be subtracted from data during imaging
         default: MODEL_DATA
       residual: 
-        default: RESIDUAL_DATA
-    use-wsclean-subtract:
-      dtype: bool
-      default: False
-    mfs-image:
+        info: residual visibilities column. If set, overrides data and model, and no subtraction will be done
+        dtype: str
+    deep-image:
       dtype: File
+      required: true
+      info: deep image of field, required to make a baseline detection image
     htc:
       cadence:
+        info: raw cube imaging cadence, in intervals
         dtype: int
         default: 1
       size:
+        info: size of cube, in pixels
         dtype: int
         required: true
       scale:
+        info: pixel scale of cube, e.g. 2asec
         dtype: str
         required: true
       weight:
+        info: imaging weight 
         dtype: Union[str,Tuple[str,float]]
         default: [briggs,0]
       convolve:
         arcsec:
+          info: cube will be reconvolved to this size, to maximize point source sensitvity
           dtype: float
           default: 8
-        time:
-          dtype: float
-          default: 120
+        ## disabled for now, rather do breifast-style loop
+        # time:
+        #   dtype: float
+        #   default: 120
     nlc:
       info: number of lightcurves to extract, default is all
       dtype: int
     publish-plots:
+      info: make publication-quality lightcurve plots
       dtype: bool
       default: false
     publish-plot-title:
+      info: title for publication plots
       default: 'Observation {recipe.obs}: peak $ {{peak_ujy:.0f}}\pm{{peak_std_ujy:.0f}} $ uJy'
 
-  aliases:
     minuv-l:
-      - (wsclean).minuv-l
+      info: apply inner uv-cut during imaging (in lambdas)
+      aliases:
+        - (wsclean).minuv-l
     taper-inner-tukey:
-      - (wsclean).taper-inner-tukey
+      info: apply inner tukey taper during imaging (in lambdas)
+      aliases:
+        - (wsclean).taper-inner-tukey
 
   steps:
-    add-residual-data:
-      cab: msutils.addcol
-      params:
-        msname: =recipe.ms
-        colname: =recipe.column.residual
-      tags: [makeres, never]
-
-    subtract-model:
-      cab: taql.update
-      params: 
-        ms: =recipe.ms
-        commands: =LIST("set", "{recipe.column.residual}={recipe.column.data}-{recipe.column.model}")
-      tags: [makeres, never]
-
     save-ms-info:
+      info: extracts and saves MS metadata for further steps
       cab: save-ms-info
       params:
         ms: =recipe.ms
@@ -135,17 +135,19 @@ tron:
       tags: [lightcurves, cubes, always]
 
     ms-info:
+      info: loads MS metadata for further steps
       cab: load-ms-info
       params:
         ms-info-file: =steps.save-ms-info.ms-info-file
       tags: [lightcurves, cubes, always]
 
     image-htc:
+      info: images MS at raw time cadence
       cab: wsclean
       params:
         ms: =recipe.ms
-        column: =IF(recipe.use-wsclean-subtract, recipe.column.data, recipe.column.residual)
-        subtract-model: =recipe.use-wsclean-subtract
+        column: =IFSET(recipe.column.residual, recipe.column.residual, recipe.column.data)
+        subtract-model: =not IFSET(recipe.column.residual)
         prefix: '{recipe.dir-out}/images/cad{recipe.htc.cadence}'
         intervals-out: =steps.ms-info.num_intervals / recipe.htc.cadence
         weight: =recipe.htc.weight
@@ -163,6 +165,7 @@ tron:
       skip_if_outputs: fresh
 
     stack-cube-htc:
+      info: stacks images into zarr dataset, applies convolve.size
       cab: stack_xarray_cube
       params:
         images: =steps.image-htc.restored.per-interval
@@ -177,6 +180,7 @@ tron:
       tags: [lightcurves, cubes]
 
     cube-to-fits:
+      info: converts stacked zarr dataset (raw images) into FITS cube
       cab: zarr_to_fits
       params:
         zarr: =steps.stack-cube-htc.cube
@@ -185,6 +189,7 @@ tron:
       tags: [lightcurves, cubes_to_fits, cubes]
 
     cube-ratio-to-fits:
+      info: converts stacked zarr dataset (ratio raw/convolved) into FITS cube
       cab: zarr_to_fits
       params:
         zarr: =steps.stack-cube-htc.ratio-cube
@@ -193,6 +198,7 @@ tron:
       tags: [lightcurves, cubes_to_fits, cubes]
 
     cube-convolved-to-fits:
+      info: converts stacked zarr dataset (convolved images) into FITS cube
       cab: zarr_to_fits
       params:
         zarr: =steps.stack-cube-htc.convolved-cube
@@ -201,18 +207,20 @@ tron:
       tags: [lightcurves, cubes_to_fits, cubes]
 
     breifast:
+      info: runs a multi-timescale breifast search on cubes
       recipe: tron-breifast
       params:
-        mfs-image: =recipe.mfs-image
+        deep-image: =recipe.deep-image
         cube: =steps.stack-cube-htc.convolved-cube
         cube-fits: =steps.cube-convolved-to-fits.outimage
         timescales: [0,30,60,120,240,480]
       tags: [breifast]
 
     source-finder:
+      info: runs source finder on deep image to make gaul list
       cab: bdsf.catalog
       params:
-        image: =recipe.mfs-image
+        image: =recipe.deep-image
         thresh_pix: 4
         thresh_isl: 3
         rms_box: [100,20]
@@ -226,17 +234,18 @@ tron:
       tags: [catalog, never]    
 
     make-master-source-catalog:
+      info: converts gaul list into master catalog for lightcurve extraction
       tags: [catalog, never]    
       cab: make-master-catalog
       params:
-        master_catalog: =STRIPEXT(recipe.mfs-image) + ".mastercat.ecsv"
-        mfs_image: =recipe.mfs-image
+        master_catalog: =STRIPEXT(recipe.deep-image) + ".mastercat.ecsv"
+        mfs_image: =recipe.deep-image
         max_radius_deg: 1.5
         catalogs: 
           base: [=steps.source-finder.outfile_gaul, 0, main]
 
     extract-lightcurves:
-      info: extracts lightcurves from convolved cube
+      info: extracts lightcurves from convolved cube using the master catalog
       cab: extract_lightcurves
       params:
         cube: =steps.stack-cube-htc.convolved-cube
@@ -257,25 +266,26 @@ tron:
       skip_if_outputs: fresh
       tags: [lightcurves, never]
 
-    extract-lightcurves-conv:
-      info: extracts lightcurves from convolved cube
-      cab: extract_lightcurves
-      params:
-        cube: =steps.cube-time-convolve.outimage
-        outdir: '{recipe.dir-out}/lc{recipe.htc.cadence}{recipe.lc-conv-suffix}'
-        catalog: =steps.make-master-source-catalog.master_catalog
-        regfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.reg'
-        statsfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.stats.p'
-        output_file_label: "-{recipe.obs}"
-        srctype: P
-        minflux: 3uJy
-        flag_excess_std: 3
-        within: =recipe.lightcurves-within
-        nsrc: =recipe.nlc
-        ncpu: =root.ncpu
-        # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
-        fluxcols: [flux_base]
-        plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)
-      skip_if_outputs: fresh
-      tags: [lightcurves, never]
+    ## disabling for now -- implement loop rather (maybe in breifast?)
+    # extract-lightcurves-conv:
+    #   info: extracts lightcurves from convolved cube
+    #   cab: extract_lightcurves
+    #   params:
+    #     cube: =steps.cube-time-convolve.outimage
+    #     outdir: '{recipe.dir-out}/lc{recipe.htc.cadence}{recipe.lc-conv-suffix}'
+    #     catalog: =steps.make-master-source-catalog.master_catalog
+    #     regfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.reg'
+    #     statsfile: '{current.outdir}/lc{recipe.htc.cadence}-{recipe.obs}.stats.p'
+    #     output_file_label: "-{recipe.obs}"
+    #     srctype: P
+    #     minflux: 3uJy
+    #     flag_excess_std: 3
+    #     within: =recipe.lightcurves-within
+    #     nsrc: =recipe.nlc
+    #     ncpu: =root.ncpu
+    #     # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
+    #     fluxcols: [flux_base]
+    #     plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)
+    #   skip_if_outputs: fresh
+    #   tags: [lightcurves, never]
 

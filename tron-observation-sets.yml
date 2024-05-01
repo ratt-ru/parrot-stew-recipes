@@ -13,48 +13,48 @@ obs:
     dir-out: obs-l1-qc2/im4htc-cad1
     band: L
     column.residual: CORRECTED_DATA
-    mfs-image: PARROT-Lband-MFS-image.fits
+    deep-image: PARROT-Lband-MFS-image.fits
   L2:
     ms: "../msdir/1624216341_sdp_l0-J2009_2026-corr.ms" # L deep 2
     dir-out: obs-l2-qc2/im4htc-cad1
     band: L
-    mfs-image: PARROT-Lband-MFS-image.fits
+    deep-image: PARROT-Lband-MFS-image.fits
     column.residual: CORRECTED_DATA
   L3:
     ms: "../msdir/1627405233_sdp_l0-J2009_2026-corr.ms" # L deep from U+L obs Jul 2021
     dir-out: obs-l3-qc2/im4htc-cad1
     band: L
-    mfs-image: PARROT-Lband-MFS-image.fits
+    deep-image: PARROT-Lband-MFS-image.fits
     column.residual: CORRECTED_DATA
   L4:
     ms: "msdir/1687288333_sdp_l0-J2009_2026-corr.ms" # L deep 4
     dir-out: obs-l4-qc2/im4htc-cad1
     band: L
-    mfs-image: PARROT-Lband-MFS-image.fits
+    deep-image: PARROT-Lband-MFS-image.fits
     column.residual: CORRECTED_DATA
   U0:
     ms: ../msdir/1625623568_sdp_l0-J2009_2026-corr.ms  # UHF test obs Jul 2021 1h
     dir-out: obs-u0-qc2/im4htc-cad1
     band: UHF
-    mfs-image: PARROT-UHF-MFS-image.fits
+    deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
   U1:
     ms: ../msdir/1627405250_sdp_l0-J2009_2026-corr.ms  # UHF from U+L obs Jul 2021
     dir-out: obs-u1-qc2/im4htc-cad1
     band: UHF
-    mfs-image: PARROT-UHF-MFS-image.fits
+    deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
   U2:
     ms: ../msdir/1628439081_sdp_l0-J2009_2026-corr.ms  # UHF Aug 2021 9h
     dir-out: obs-u2-qc2/im4htc-cad1
     band: UHF
-    mfs-image: PARROT-UHF-MFS-image.fits
+    deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
   U3:
     ms: ../msdir/1643947704_sdp_l0-J2009_2026-corr.ms # UHF Feb 2022  part I
     dir-out: obs-u3-qc2/im4htc-cad1
     band: UHF
-    mfs-image: PARROT-UHF-MFS-image.fits
+    deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
 
 
@@ -82,8 +82,7 @@ obs:
     ms: msdir/3C445/1622255335_sdp_l0-3C445-corr.ms/
     dirs.sub: obs-3c445
     band: L
-    use-wsclean-subtract: true
-    mfs-image: obs-3c445/OD_3C445_4peel_post-MFS-image.fits
+    deep-image: obs-3c445/OD_3C445_4peel_post-MFS-image.fits
 
 band:
   UHF:
