@@ -93,37 +93,42 @@ obs:
     band: L
     use-wsclean-subtract: true
     deep-image: mgpls/T16R02C06-MFS-image.fits
+    timescales: [0,15,30]
 
   T16R02C06b:
     ms: mgpls/1543664600_sdp_l0-T16R02C06-corr.ms
     dirs.sub: mgpls/T16R02C06b
     band: L
     deep-image: mgpls/T16R02C06-MFS-image.fits
+    timescales: [0,15,30]
 
   T16R02C04a:
     ms: mgpls/1543664600_sdp_l0-T16R02C04-corr.ms
     dirs.sub: mgpls/T16R02C04a
     band: L
     deep-image: mgpls/T16R02C04-MFS-image.fits
+    timescales: [0,15,30]
 
   T16R02C04b:
     ms: mgpls/1543635069_sdp_l0-T16R02C04-corr.ms
     dirs.sub: mgpls/T16R02C04b
     band: L
     deep-image: mgpls/T16R02C04-MFS-image.fits
+    timescales: [0,15,30]
 
   T16R02C02a:
     ms: mgpls/1543664600_sdp_l0-T16R02C02-corr.ms
     dirs.sub: mgpls/T16R02C02a
     band: L
     deep-image: mgpls/T16R02C02-MFS-image.fits
+    timescales: [0,15,30]
 
   T16R02C02b:
     ms: mgmgpls/1543635069_sdp_l0-T16R02C02-corr.ms
     dirs.sub: mgpls/T16R02C02b
     band: L
     deep-image: mgpls/T16R02C02-MFS-image.fits
-
+    timescales: [0,15,30]
 
 band:
   UHF:

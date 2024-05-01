@@ -251,10 +251,19 @@ def convolve_time_cube(image, outimage, size_sec=0):
     # Convert back to spatial domain
     convolved_array = da.fft.ifft(convolved_fft, axis=2).real.astype(np.float32)  # .real is used to discard imaginary part
 
+    # mask out blank planes
+    blanks = da.all(array == 0, axis=(0,1))
+    weights = (~blanks).astype(np.float32)
+    weights_conv = da.fft.ifft(da.fft.fft(weights) * kernel_fft).real.astype(np.float32)
+    convolved_array /= weights_conv[np.newaxis, np.newaxis, :]
+    convolved_array[:, :, blanks] = 0
+
     print(f"saving convolved cube")
     # Compute the result (or you can use this in further lazy computations)
     ds = ds.assign(cube0=(ds.dims, convolved_array))
     ds.to_zarr(outimage, mode="w")
+    print(f"{blanks.sum().compute()}/{len(blanks)} time planes are blank")
+    print(f"plane weights are {weights_conv.compute()}")
 
 def zarr_to_fits(zarr, outimage):
     ds = xarray.open_zarr(zarr)
