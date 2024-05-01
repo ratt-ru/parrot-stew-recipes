@@ -124,7 +124,7 @@ obs:
     breifast.timescales: [0,15,30]
 
   T16R02C02b:
-    ms: mgmgpls/1543635069_sdp_l0-T16R02C02-corr.ms
+    ms: mgpls/1543635069_sdp_l0-T16R02C02-corr.ms
     dirs.sub: mgpls/T16R02C02b
     band: L
     deep-image: mgpls/T16R02C02-MFS-image.fits
