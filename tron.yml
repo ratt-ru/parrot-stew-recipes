@@ -41,13 +41,13 @@ tron:
   info: "Perform transient analysis on precalibrated MS"
 
   assign:
-    dir-out: '{recipe.dirs.base}/{recipe.dirs.sub}{recipe.output-suffix}'                     # output products go here
-    image-prefix: '{recipe.dir-out}/im{info.suffix}/im{info.suffix}'  # prefix for image names at each step
     log.dir: '{recipe.dir-out}/logs/log-{config.run.datetime}'          # put logs into output dir
-    # some more directory assignments
+    
+    # some more default directory assignments
     dirs:
       ms: ../msdir       # MSs live here
-      temp: ./tmp # "{config.run.env.HOME}/tmp"   # temp files go here
+      temp: ./tmp        # "{config.run.env.HOME}/tmp"   # temp files go here
+      sub: .
       base: .            # base project directory -- directory of recipe by default, but see below
 
     # extra lightcurve suffix, added if convolving
@@ -61,11 +61,9 @@ tron:
     obs:
       info: "Selects observation, see transient-observation-sets.yml for list of observations"
       required: true
-    output-suffix:
-      dtype: str
-      default: ''
-    dir.out: 
-      dtype: str
+    dir-out:
+      info: output directory where cubes will be generated
+      default: '{recipe.dirs.base}/{recipe.dirs.sub}/imhtc-cad{recipe.htc.cadence}'  
     column:
       data: 
         default: CORRECTED_DATA
@@ -73,6 +71,9 @@ tron:
         default: MODEL_DATA
       residual: 
         default: RESIDUAL_DATA
+    use-wsclean-subtract:
+      dtype: bool
+      default: False
     mfs-image:
       dtype: File
     htc:
@@ -140,22 +141,24 @@ tron:
       tags: [lightcurves, cubes, always]
 
     image-htc:
-      _use: lib.steps.wsclean.dirty
+      cab: wsclean
       params:
         ms: =recipe.ms
-        column: =recipe.column.residual
-        prefix: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc.cadence}/images/cad{recipe.htc.cadence}'
+        column: =IF(recipe.use-wsclean-subtract, recipe.column.data, recipe.column.residual)
+        subtract-model: =recipe.use-wsclean-subtract
+        prefix: '{recipe.dir-out}/images/cad{recipe.htc.cadence}'
         intervals-out: =steps.ms-info.num_intervals / recipe.htc.cadence
-        no-dirty: true
-        nchan: 1
-        niter: 0 # 10000
-        padding: 3
-        auto-threshold: 1
-        threshold: 0
-        mgain: 1
         weight: =recipe.htc.weight
         size: =recipe.htc.size
         scale: =recipe.htc.scale
+        use-wgridder: true
+        no-dirty: true
+        log-time: true
+        nchan: 1
+        niter: 0 
+        padding: 3
+        nwlayers-factor: 3
+        temp-dir: =recipe.dirs.temp
       tags: [lightcurves, cubes]
       skip_if_outputs: fresh
 
@@ -163,7 +166,7 @@ tron:
       cab: stack_xarray_cube
       params:
         images: =steps.image-htc.restored.per-interval
-        cube: =DIRNAME(recipe.image-prefix) + '-cad{recipe.htc.cadence}/cube-{recipe.htc.cadence}-dirty.zarr'
+        cube: '{recipe.dir-out}/cube-{recipe.htc.cadence}.zarr'
         ms: =recipe.ms
         obs-label: =recipe.obs
         cadence: =recipe.htc.cadence
@@ -201,7 +204,7 @@ tron:
       recipe: tron-breifast
       params:
         mfs-image: =recipe.mfs-image
-        cube: =steps.stack-cube-htc.cube
+        cube: =steps.stack-cube-htc.convolved-cube
         timescales: [0,30,60,120,240,480]
       tags: [breifast]
 
@@ -225,7 +228,7 @@ tron:
       tags: [catalog, never]    
       cab: make-master-catalog
       params:
-        master_catalog: "{recipe.dirs.sub}/mastercat.ecsv"
+        master_catalog: =STRIPEXT(recipe.mfs-image) + "./mastercat.ecsv"
         mfs_image: =recipe.mfs-image
         max_radius_deg: 1.5
         catalogs: 

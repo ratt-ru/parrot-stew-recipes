@@ -228,8 +228,6 @@ def create_multidimensional_gaussian_kernel(sigma: List[float], size: Optional[L
     # Normalize the kernel
     kernel /= np.sum(kernel)
 
-    print(kernel)
-    
     return kernel
 
 def convolve_time_cube(image, outimage, size_sec=0):

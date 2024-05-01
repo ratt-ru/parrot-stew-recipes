@@ -66,7 +66,7 @@ tron-breifast:
       params:
         image: =recipe.cube
         size_sec: =recipe.timescale
-        outimage: =STRIPEXT(current.image) + '-{recipe.timescale}s.zarr'
+        outimage: =STRIPEXT(current.image) + '-{recipe.timescale:.0f}s.zarr'
       skip: =recipe.timescale == 0 
       skip_if_outputs: fresh
 
