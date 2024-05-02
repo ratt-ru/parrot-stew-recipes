@@ -258,7 +258,7 @@ tron:
         minflux: 3uJy
         flag_excess_std: 3
         within: =recipe.lightcurves-within
-        nsrc: =recipe.nlc
+        nsrc: =IFSET(recipe.nlc)
         ncpu: =root.ncpu
         # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
         fluxcols: [flux_base]
