@@ -35,7 +35,7 @@ def match_catalogs(master_catalog: str,
             raise RuntimeError("either mfs_image or ra0 and dec0 must be specified")
         hdu = fits.open(mfs_image)[0]
         wcs = WCS(hdu.header).dropaxis(-1).dropaxis(-1)
-        centre = wcs.pixel_to_world(hdu.data.shape[2] // 2, hdu.data.shape[3])
+        centre = wcs.pixel_to_world(hdu.data.shape[2] // 2, hdu.data.shape[3] // 2)
         print(f"Got field centre from {mfs_image}: {centre}")
     else:
         centre = SkyCoord(ra0, dec0, frame=FK5)

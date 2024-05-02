@@ -321,14 +321,14 @@ timestamps = None
 highlight_timestamps = []
 plot_title_format = None
 
-def _extract_curve(isrc: int, srcnum: int):
+def _extract_curve(icurve: int, srcnum: int):
 
     what = "light curve" if not subtract_curves else "baseline-subtracted lightcurve"   
     src = cat_tab[srcnum]
     flux = fluxes[srcnum]
     x, y = img_xy[srcnum]
     radius = src['R'].to_value(u.deg)
-    print(f"extracting {what} #{isrc} for source ID {srcnum}, flux {flux*1e+6:.2f} uJy at {x}, {y} (dist {radius:.2f}deg)")
+    print(f"extracting {what} #{icurve} for source ID {srcnum}, flux {flux*1e+6:.2f} uJy at {x}, {y} (dist {radius:.2f}deg)")
 
     try:
         coord = src['pos']
@@ -544,17 +544,17 @@ def _extract_curve(isrc: int, srcnum: int):
                 ef.write(f"meta: {table_meta}\n")
             pickle.dump((lightcurve, timestamps, stddev), open(f"{lc_file}.p"))
 
-        print(f"light curve {srcnum} done")
+        print(f"light curve #{icurve} for source ID {srcnum} done")
         return srcnum, pd.DataFrame(dfdict, index=[srcnum])
 
     except Exception as exc:
         traceback.print_exc()
-        print(f"extracting light curve {srcnum}: failed with exception, see above")
+        print(f"extracting light curve #{icurve} for source ID {srcnum}: failed with exception, see above")
         return srcnum, None
 
 sources = None
 
-def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, nsrc=100, chunk_size=100, 
+def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, nsrc=0, chunk_size=100, 
                          # use this field as the flux
                          fluxcols=None,
                          # matches interesting timestamps from text file
@@ -653,7 +653,7 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     sel_sources = set()
 
     for sel in select_labels:
-        # select by matcing label
+        # select by matching label
         if sel != "*":
             subset = [num for num, lbls in enumerate(labels) if any(fnmatch.fnmatch(lbl, sel) for lbl in lbls)]
             sel_sources.update(subset)
@@ -679,12 +679,12 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
             sel_sources.update(sources)
 
     sources = sorted(sel_sources)
-    if nsrc is not None and len(sources) > nsrc:
+    if nsrc is not None and nsrc > 0 and len(sources) > nsrc:
         sources = sources[:nsrc]
         print(f"  restricting to first {len(sources)}")
 
     nsrc = len(sources)
-    print(f"{nsrc} sources selected for lightcurve extraction")
+    print(f"{nsrc} sources selected for lightcurve extraction, image shape is {img.shape}")
     if not sources:
         return
 
@@ -692,16 +692,22 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     img_xp, img_yp = wcs.world_to_pixel(cat_tab["pos"][sources])
     img_xp = np.round(img_xp).astype(int)
     img_yp = np.round(img_yp).astype(int)
+    # eliminate out of bounds sources
+    in_bounds = (img_xp >= 0) & (img_xp < img.shape[0]) & \
+                (img_yp >= 0) & (img_yp < img.shape[1])
+    # reverse order, and form dict of {(x,y):src}, so that for multiple sources at the same location,
+    # the lowest-numbered source ends up in the dictionary
+    sources = np.array(sources)[in_bounds][::-1]
+    img_xp = img_xp[in_bounds][::-1]
+    img_yp = img_yp[in_bounds][::-1]
+    posdict = {(x, y): isrc for isrc, x, y in zip(sources, img_xp, img_yp)}
+    # reverse order back to ascending and get updated list 
+    sources = list(posdict.values())[::-1]
+    posdict = list(posdict.items())[::-1]
     # make global dict of isrc -> (x, y)
     global img_xy
-    img_xy = {isrc: (x, y) for isrc, x, y in zip(sources, img_xp, img_yp)}
+    img_xy = {isrc: (x, y) for (x, y), isrc in posdict}
 
-    # go through list of positions in reverse, and form dict from {(x,y):src}, so that for multiple sources at the same (x,y), 
-    # the lowest-numbered source ends up in the dictionary. Also eliminate out-of-bounds pixels
-    posdict = {(x, y): isrc for isrc, x, y in list(zip(sources, img_xp, img_yp))[::-1]
-                if x>=0 and y>=0 and x<img.shape[0] and y<img.shape[1]}
-
-    sources = list(posdict.values())[::-1]
     print(f"eliminating non-unique and out-of-bounds pixel positions leaves {len(sources)} sources")
 
     # now start extracting
