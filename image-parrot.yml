@@ -14,8 +14,8 @@ opts:
     nest: 2
     symlink: log
   backend:
-    singularity:
-      auto_update: true
+    # singularity:
+    #   auto_update: true
     rlimits:
       NOFILE: 100000  # set high limit on number of open files
 

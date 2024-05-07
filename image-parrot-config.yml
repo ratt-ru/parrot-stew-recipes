@@ -7,8 +7,9 @@ opts:
       quay.io/stimela2: 800133935729.dkr.ecr.af-south-1.amazonaws.com/quay/stimela2
 
     kube:
+      enable: true
       namespace: rarg-test-compute
-      verbose_events: 1   # to get events printed
+      # verbose_events: 1   # to get events printed
       dir: /mnt/data/parrot-jsk
 
       # always_pull_images: true
