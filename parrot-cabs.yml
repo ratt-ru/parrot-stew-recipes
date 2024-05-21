@@ -19,6 +19,16 @@ _include:
     - oms-ddf-cabs.yml
 
 cabs:
+
+  crystalball:
+    inputs:
+      num-workers:
+        dtype:
+          int
+      memory-fraction:
+        dtype:
+          float
+ 
   wget:
     command: wget
     inputs:
@@ -371,9 +381,17 @@ lib:
         threshold: mask.threshold
         dilate: mask.dilate
         # outputs
-        mask: mask.mask
-        except-rrat: mask-except-rrat.mask
-        mul: mask-mul.mask
+        # mask: mask.mask
+        # except-rrat: mask-except-rrat.mask
+        # mul: mask-mul.mask
+
+      outputs:
+        mask:
+          dtype: File
+        except-rrat:
+          dtype: File
+        mul:
+          dtype: File
 
       defaults:
         threshold: 6.5

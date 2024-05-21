@@ -1,17 +1,17 @@
-run.node:
-  baker:
-    obs: L1
-    ncpu: 64
-  muddy:
-    obs: L2
-    ncpu: 64
-  clapton:
-    obs: L3
-    ncpu: 64
-  bruce:
-    obs: U1
-    ncpu: 64
-  DEFAULT: {}
+# run.node:
+#   baker:
+#     obs: L1
+#     ncpu: 64
+#   muddy:
+#     obs: L2
+#     ncpu: 64
+#   clapton:
+#     obs: L3
+#     ncpu: 64
+#   bruce:
+#     obs: U1
+#     ncpu: 64
+#   DEFAULT: {}
 
 obs:
   L1test:

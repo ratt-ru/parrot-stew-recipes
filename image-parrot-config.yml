@@ -8,6 +8,7 @@ opts:
 
     kube:
       enable: true
+      context: jonathan.simon.kenyon-rarg-test-eks-cluster
       namespace: rarg-test-compute
       # verbose_events: 1   # to get events printed
       dir: /mnt/data/parrot-jsk
@@ -34,13 +35,20 @@ opts:
           lifecycle: persist
           mount: /msdir
           at_start: allow_reuse
+          step_init_commands:
+            - whoami
+            - ls -l /
+            - ls -l /msdir
+            - ls -l /msdir/msdir
+          init_commands:
+              - chown -R 1017.1017 /msdir  # No substitution yet!
 
       provisioning_timeout: 0
 
       ## override user/group ID
       user:
-        uid: 1017
-        gid: 1017
+        uid: 1017 #1017
+        gid: 1017 #1017
 
       ## you can specify a global memory default for pods here,
       ## but also do this on a per-cab or per-step basis of course
@@ -62,7 +70,12 @@ opts:
         fat:
           nodeSelector:
             rarg/node-class: compute
-            rarg/instance-type: m6i.4xlarge
+            rarg/instance-type: m5.4xlarge
+            rarg/capacity-type: ON_DEMAND
+        very_fat:
+          nodeSelector:
+            rarg/node-class: compute
+            rarg/instance-type: m5.8xlarge
             rarg/capacity-type: ON_DEMAND
 
       ## default pod type to use -- keys into predefined_pod_types
@@ -79,21 +92,55 @@ cabs:
   wsclean:
     backend:
       kube:
+        debug:
+          pause_on_start: false
         job_pod:
           type: fat
         volumes:
           wsclean-temp:
             #storage_class_name: rarg-test-compute-fsx-sc-af-south-1c
             # storage_class_name: rarg-test-compute-ebs-sc-immediate-io2-4000
-            storage_class_name: rarg-test-compute-efs-sc #rarg-test-compute-ebs-sc-immediate-gp3-500 #rarg-test-compute-ebs-sc-immediate-gp3-1000
+            storage_class_name: rarg-test-compute-ebs-sc-immediate-gp3-500  #rarg-test-compute-ebs-sc-immediate-gp3-500 #rarg-test-compute-ebs-sc-immediate-gp3-1000
             capacity: 500Gi
-            lifecycle: persist
+            lifecycle: step #persist
             mount: /scratch
             at_start: allow_reuse
             access_modes: [ReadWriteOnce]
-            # access_modes: [ReadWriteMany]
+        #     # access_modes: [ReadWriteMany]
             init_commands:
-              - chown 1017.1017 .  # No substitution yet!
-            # step_init_commands:
-            #   - (ls -A1 | xargs rm -rf)
+            - whoami
+            - chown -R 1017.1017 /scratch  # No substitution yet!
+            - echo "foo"
+            - ls -l /
+            - ls -l /scratch
+            step_init_commands:
+            - whoami
+            - echo "bar"
+            - ls -l /
+            - ls -l /scratch
+        #     # step_init_commands:
+        #     #   - (ls -A1 | xargs rm -rf)
+  quartical:
+    backend:
+      kube:
+        job_pod:
+          type: fat
+  crystalball:
+    backend:
+      kube:
+        job_pod:
+          type: fat
+  smops:
+    backend:
+      kube:
+        job_pod:
+          type: fat
+  msutils.copycol:
+    backend:
+      kube:
+        job_pod:
+          type: very_fat
 
+
+
+# dask-ms convert -o s3://rarg-test-binface/fiasco3/msdir/RRAT.zarr -f zarr -g FIELD_ID,DATA_DESC_ID,SCAN_NUMBER -i TIME,ANTENNA1,ANTENNA2 1622491578-fresh.ms

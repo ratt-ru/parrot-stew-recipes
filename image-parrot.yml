@@ -107,6 +107,9 @@ ratt-parrot:
       default: false
     publish-plot-title:
       default: 'Observation {recipe.obs}: peak $ {{peak_ujy:.0f}}\pm{{peak_std_ujy:.0f}} $ uJy'
+    ncpu:
+      dtype: int
+      default: 1
 
   aliases:
     ms:
@@ -127,7 +130,7 @@ ratt-parrot:
         ms: =recipe.ms
         mode: save
         versionname: =recipe.initial-flag-version
-      skip: false
+      skip: true
 
     flag-reset:
       cab: casa.flagman
@@ -150,6 +153,9 @@ ratt-parrot:
       params:
         restored-image: "{previous.restored.mfs}"
         prefix: "{previous.prefix}"
+        mask: '{current.prefix}-mask.fits'
+        except-rrat: '{current.prefix}-mask-nodwarf.fits'
+        mul: '{current.prefix}-multiplicative-mask.fits'
 
     flagsummary-1:
       cab: casa.flagsummary
@@ -185,6 +191,9 @@ ratt-parrot:
         restored-image: "{previous.restored.mfs}"
         prefix: "{previous.prefix}"
         threshold: 5
+        mask: '{current.prefix}-mask.fits'
+        except-rrat: '{current.prefix}-mask-nodwarf.fits'
+        mul: '{current.prefix}-multiplicative-mask.fits'
 
     dd_predict-2:
       cab: crystalball
@@ -195,13 +204,15 @@ ratt-parrot:
         output-column: DIR1_DATA
         num-sources: 1000
         sky-model: "{steps.image-2.source-list}"
+        memory-fraction: 0.1
+        num-workers: 4
 
     upsample-2:
       cab: smops
       params:
         ms: =recipe.ms
         input-prefix: =recipe.image-prefix
-        num-threads: =root.ncpu
+        num-threads: =recipe.ncpu
         channels-out: 256
         polynomial-order: 4
         output-prefix: "{recipe.image-prefix}-upsampled"
@@ -222,7 +233,7 @@ ratt-parrot:
       skip: =not recipe.copy-model-columns
       cab: msutils.copycol
       params:
-        msname: =recipe.ms
+        msname: "{recipe.ms}"
         fromcol: MODEL_DATA
         tocol: MODEL{info.suffix}_DATA
 
@@ -269,6 +280,9 @@ ratt-parrot:
         restored-image: "{steps.image-3.restored.mfs}"
         prefix: "{steps.image-3.prefix}"
         threshold: 5
+        mask: '{current.prefix}-mask.fits'
+        except-rrat: '{current.prefix}-mask-nodwarf.fits'
+        mul: '{current.prefix}-multiplicative-mask.fits'
 
     dd_selfcal-3a:
       _use: lib.steps.quartical.k-g-de
@@ -289,6 +303,9 @@ ratt-parrot:
       params:
         restored-image: "{previous.restored.mfs}"
         prefix: "{previous.prefix}"
+        mask: '{current.prefix}-mask.fits'
+        except-rrat: '{current.prefix}-mask-nodwarf.fits'
+        mul: '{current.prefix}-multiplicative-mask.fits'
       skip: =not recipe.ampcal
 
     dd_selfcal-3b:
@@ -316,7 +333,7 @@ ratt-parrot:
       params:
         ms: =recipe.ms
         input-prefix: =recipe.image-prefix
-        num-threads: =root.ncpu
+        num-threads: =recipe.ncpu
         channels-out: 256
         polynomial-order: 4
         output-prefix: "{recipe.image-prefix}-upsampled"
@@ -628,7 +645,7 @@ ratt-parrot:
         flag_excess_std: 3
         within: =recipe.lightcurves-within
         nsrc: 50000
-        ncpu: =root.ncpu
+        ncpu: =recipe.ncpu
         # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
         fluxcols: =recipe.catalog-flux-columns
         plot_title: =IF(recipe.publish-plots, NOSUBST(recipe.publish-plot-title), UNSET)

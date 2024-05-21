@@ -4,15 +4,26 @@ ratt-parrot:
       ms: /msdir/msdir
       temp: /scratch
 
-  # backend:
-  #   kube:      
-  #     job_pod:
-  #       custom_pod_spec:
-  #         required:
-  #           nodeSelectorTerms:        
-  #           - matchExpressions:
-  #             - key: topology.ebs.csi.aws.com/zone
-  #               operator: In
-  #               values:
-  #               - af-south-1c
+  backend:
+    kube:
+      job_pod:
+        custom_pod_spec:
+          nodeSelector:
+            topology.kubernetes.io/zone: "af-south-1c"
+          # affinity:
+          #   nodeAffinity:
+          #     requiredDuringSchedulingIgnoredDuringExecution:
+          #       nodeSelectorTerms:
+          #       - matchExpressions:
+          #         - key: topology.kubernetes.io/zone
+          #           operator: In
+          #           values:
+          #           - af-south-1c
+          # required:
+          #   nodeSelectorTerms:
+          #   - matchExpressions:
+          #     - key: topology.ebs.csi.aws.com/zone
+          #       operator: In
+          #       values:
+          #       - af-south-1c
 
