@@ -416,26 +416,32 @@ lib:
         skip-regions:
           dtype: File
           default: 'rrat.reg'
-      
-      aliases:
-        # inputs
-        restored-image: mask.restored-image
-        threshold: mask.threshold
-        dilate: mask.dilate
-        # outputs
-        mask: mask.mask
-        except-rrat: mask-except-rrat.mask
-        mul: mask-mul.mask
+        restored-image:
+          default: '{current.prefix}-mask.fits' 
+          aliases: [mask.restored-image]
+
+      outputs:
+        mask:
+          default: '{current.prefix}-mask.fits'
+          aliases: [mask.mask]
+        except-rrat: 
+          default: '{current.prefix}-mask-nodwarf.fits'
+          aliases: [mask-except-rrat.mask]
+        mul: 
+          default: '{current.prefix}-multiplicative-mask.fits'
+          aliases: [mask-mul.mask]
 
       defaults:
         threshold: 6.5
         dilate: 2
 
+      aliases:
+        threshold: mask.threshold
+        dilate: mask.dilate
+
       steps:
         mask:
           cab: breizorro
-          params:
-            mask: '{recipe.prefix}-mask.fits'
 
         mask-except-rrat:
           cab: breizorro
@@ -444,7 +450,6 @@ lib:
             mask-image: '{previous.mask}'
             subtract: '{recipe.skip-regions}'
             number-islands: true
-            mask: '{recipe.prefix}-mask-nodwarf.fits'
 
         mask-mul:
           cab: breizorro
@@ -453,7 +458,6 @@ lib:
             mask-image: '{steps.mask.mask}'
             subtract: '{steps.mask-except-rrat.mask}'
             invert: true
-            mask: '{recipe.prefix}-multiplicative-mask.fits'
 
   steps: 
     wsclean:

@@ -1,20 +1,17 @@
 # use virtual_env breifast for now
-cabs:
-  breifast.make-baseline-image:
-    backend:
-      select: native
-      native:
-        virtual_env: ~/.venv/breizorro
+lib:
+  misc:
+    breifast:
+      # common options for breifast cab can set en masse here
+      cabs:
+        # use virtual_env breifast for now
+        backend:
+          select: native
 
-  breifast.process-residual-cube:
-    backend:
-      select: native
-      native:
-        virtual_env: ~/.venv/breizorro
-
-  breifast.render:
-    backend:
-      select: native
-      native:
-        virtual_env: ~/.venv/breizorro
+    suricat:
+      # common options for breifast cab can set en masse here
+      cabs:
+        # use virtual_env suricat for now
+        backend:
+          select: native
 

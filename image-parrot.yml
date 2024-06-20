@@ -92,6 +92,8 @@ ratt-parrot:
       default: false
       aliases: 
         - (quartical).mad_flags.enable
+    extra-stokes-images:
+      dtype: str
     flag-on-residuals:
       dtype: bool
       default: false
@@ -140,6 +142,7 @@ ratt-parrot:
         niter: 150000
         fits-mask: =IF(recipe.automask, UNSET, recipe.deep-mask-1)
         auto-threshold: 2
+      skip_if_outputs: fresh
 
     mask-1:
       recipe: make_masks
@@ -225,6 +228,8 @@ ratt-parrot:
     dd_selfcal-3:
       _use: lib.steps.quartical.k-de
       params:
+        input_ms:
+          select_corr: [0,1,2,3]
         output:
           subtract_directions: [1]
 
@@ -301,6 +306,16 @@ ratt-parrot:
         auto-threshold: 1
       skip: =not recipe.ampcal
 
+    image-3pol:
+      _use: lib.steps.wsclean.rrat
+      params:
+        column: SELFCAL3_DATA
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.mask)
+        auto-threshold: 1
+        pol: =recipe.extra-stokes-images
+        save-source-list: false
+      skip: =not IFSET(recipe.extra-stokes-images)
+
     flagsummary-3:
       cab: casa.flagsummary
       params:
@@ -374,6 +389,16 @@ ratt-parrot:
       params:
         fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.mask)
         auto-threshold: 1
+
+    upsample-4:
+      cab: smops
+      params:
+        ms: =recipe.ms
+        input-prefix: =recipe.image-prefix
+        num-threads: =root.ncpu
+        channels-out: 256
+        polynomial-order: 4
+        output-prefix: "{recipe.image-prefix}-upsampled"
 
     fft-image-4:
       cab: fft-image
@@ -487,8 +512,8 @@ ratt-parrot:
       _use: lib.steps.wsclean.predict
       params:
         ms: '{recipe.ms}'
-        prefix: =steps.image-4.prefix
-        nchan: =steps.image-4.nchan
+        prefix: =steps.upsample-4.output-prefix
+        nchan: =steps.upsample-4.channels-out
 
     add-corrected-data:
       cab: msutils.addcol

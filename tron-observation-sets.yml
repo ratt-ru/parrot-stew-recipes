@@ -18,67 +18,98 @@ obs:
     band: L
     column.residual: CORRECTED_DATA
     deep-image: PARROT-Lband-MFS-image.fits
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
   L2:
     ms: "../msdir/1624216341_sdp_l0-J2009_2026-corr.ms" # L deep 2
     dir-out: obs-l2-qc2/im4htc-cad1
     band: L
-    deep-image: PARROT-Lband-MFS-image.fits
+    stokes: [I,Q,U,V]
+    deep-image:  obs-l2-qc2/im3/im3-MFS-image.fits # PARROT-Lband-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+    breifast.procres.beam-size: 6arcsec
+
   L3:
     ms: "../msdir/1627405233_sdp_l0-J2009_2026-corr.ms" # L deep from U+L obs Jul 2021
     dir-out: obs-l3-qc2/im4htc-cad1
     band: L
     deep-image: PARROT-Lband-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
   L4:
     ms: "msdir/1687288333_sdp_l0-J2009_2026-corr.ms" # L deep 4
     dir-out: obs-l4-qc2/im4htc-cad1
     band: L
     deep-image: PARROT-Lband-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
   U0:
     ms: ../msdir/1625623568_sdp_l0-J2009_2026-corr.ms  # UHF test obs Jul 2021 1h
     dir-out: obs-u0-qc2/im4htc-cad1
     band: UHF
     deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
   U1:
     ms: ../msdir/1627405250_sdp_l0-J2009_2026-corr.ms  # UHF from U+L obs Jul 2021
     dir-out: obs-u1-qc2/im4htc-cad1
     band: UHF
     deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
   U2:
     ms: ../msdir/1628439081_sdp_l0-J2009_2026-corr.ms  # UHF Aug 2021 9h
     dir-out: obs-u2-qc2/im4htc-cad1
     band: UHF
     deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
   U3:
     ms: ../msdir/1643947704_sdp_l0-J2009_2026-corr.ms # UHF Feb 2022  part I
     dir-out: obs-u3-qc2/im4htc-cad1
     band: UHF
     deep-image: PARROT-UHF-MFS-image.fits
     column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
+  U3b:
+    ms: ../msdir/1643969937_sdp_l0-J2009_2026-corr.ms # UHF Feb 2022  part I
+    dir-out: obs-u3b-qc2/im4htc-cad1
+    band: UHF
+    deep-image: PARROT-UHF-MFS-image.fits
+    column.residual: CORRECTED_DATA
+    breifast.avoid-mask: parrot-avoid-mask.fits
+
 
   SMC-U1:
     ms: msdir/1581006914_sdp_l0_1024ch_SMC.ms
     dirs.sub: obs-smc-u1
+    deep-image: obs-smc-u1/img_1581006914_sdp_l0_1024ch_SMC.ms_pcalmask_300k-MFS-image.fits
     band: UHF
     column.residual: CORRECTED_DATA
     minuv-l: 250
     taper-inner-tukey: 100
+    breifast.detection-threshold: 8
+    breifast.reject-noise-threshold: 1.28
 
   WDP-E5:
     ms: msdir/WD_pulsar/epoch5/1705730728_sdp_l0_1024ch_J1912-4410.ms
     dirs.sub: obs-wdp5
     band: UHF
+    deep-image: obs-wdp6/img_1706936255_sdp_l0_1024ch_J1912-4410.ms_pcalmask-MFS-image.fits
     column.residual: CORRECTED_DATA
 
   WDP-E6:
     ms: msdir/WD_pulsar/epoch6/1706936255_sdp_l0_1024ch_J1912-4410.ms
-    dirs.sub: obs-wdp6
+    dir-out: obs-wdp6
     band: UHF
+    deep-image: obs-wdp6/img_1706936255_sdp_l0_1024ch_J1912-4410.ms_pcalmask-MFS-image.fits
     column.residual: CORRECTED_DATA
 
   3C445:
@@ -86,6 +117,22 @@ obs:
     dirs.sub: obs-3c445
     band: L
     deep-image: obs-3c445/OD_3C445_4peel_post-MFS-image.fits
+
+  OmCen:
+    ms: /net/nash/home/ianh/Globular/OmegaCen/1541903773_sdp_l0_1024ch_OmegaCen.ms
+    band: L
+    dir-out: obs-omcen
+    deep-image: obs-omcen/img_1541903773_sdp_l0_1024ch_OmegaCen.ms_DDFkMS.app.restored.fits
+    breifast.candidate-threshold: 6
+    breifast.detection-threshold: 7
+
+  47Tuc:
+    ms: /net/nash/home/ianh/Globular/47Tuc/1529209968_sdp_l0_1024ch_47Tuc.ms
+    band: L
+    dir-out: obs-47tuc
+    deep-image: obs-47tuc/img_1529209968_sdp_l0_1024ch_47Tuc.ms_DDFkMS.app.restored.fits
+    breifast.candidate-threshold: 6
+    breifast.detection-threshold: 7
 
   T16R02C06a:
     ms: mgpls/1543635069_sdp_l0-T16R02C06-corr.ms
@@ -140,6 +187,10 @@ band:
     # htfc.scale: 4.8arcsec
     # htfc.nband: 8
     lightcurves-within: 1deg
+    breifast.max-distance: 2
+    breifast.reject-flux-threshold: 0.1
+    breifast.reject-mean-threshold: 0.1
+    breifast.render.drop-pos-neg: false
 
   L:
     htc.size: 3072
@@ -150,3 +201,7 @@ band:
     # htfc.scale: 4.8arcsec
     # htfc.nband: 8
     lightcurves-within: 1deg
+    breifast.max-distance: 1
+    breifast.reject-flux-threshold: 0.1
+    breifast.reject-mean-threshold: 0.1
+    breifast.render.drop-pos-neg: false
