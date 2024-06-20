@@ -105,8 +105,9 @@ tron:
         #   dtype: float
         #   default: 120
     nlc:
-      info: number of lightcurves to extract, default is all
+      info: number of lightcurves to extract, default (0) is all
       dtype: int
+      default: 0
     publish-plots:
       info: make publication-quality lightcurve plots
       dtype: bool
@@ -258,7 +259,7 @@ tron:
         minflux: 3uJy
         flag_excess_std: 3
         within: =recipe.lightcurves-within
-        nsrc: =recipe.nlc
+        nsrc: =IFSET(recipe.nlc)
         ncpu: =root.ncpu
         # beaminfo: =steps.derive-obs-specific-power-beam.beaminfo
         fluxcols: [flux_base]

@@ -71,10 +71,14 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
                     include_freq_axis: bool = False):
     info(f"will process {len(images)} snapshot images")
     # read datasets
-    datasets = xds_from_fits(images, prefix="cube")
+    datasets = xds_from_fits(images, "cube")
+    dims = list(datasets[0].sizes.keys())
+    dec_dim, ra_dim = dims[-2:]
+    other_dims = dims[:-2]
+    info(f"spatial dims are {ra_dim} and {dec_dim}: dropping {', '.join(other_dims)}")
 
     # get beams
-    beams = np.array([[ds.cube0.attrs['header'][key] for key in ('BMIN', 'BMAJ', 'BPA')] for ds in datasets])
+    beams = np.array([[ds.cube.attrs['header'][key] for key in ('BMIN', 'BMAJ', 'BPA')] for ds in datasets])
     # get MS timestamps
     ms_tms = sorted(set(table(ms).getcol("TIME")))
     t0 = ms_tms[0]
@@ -84,7 +88,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     info(f"MS has {len(ms_tms)} unique timestamps. Total grid of {len(grid)} timestamps with interval {dt}s")
     # get freq axis and copy to axis 4
     axiskw = 'NAXIS', 'CTYPE', 'CUNIT', 'CRPIX', 'CRVAL', 'CDELT'
-    hdr = datasets[0].cube0.attrs['header']
+    hdr = datasets[0].cube.attrs['header']
     faxis = get_freq_axis(hdr)
     if faxis is not None:
         if include_freq_axis:
@@ -120,7 +124,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     max_delta = 0
     # for each image, work out which time plane it corresponds to
     for nimg, ds in enumerate(datasets):
-        tm = Time(ds.cube0.attrs['header']['DATE-OBS'])
+        tm = Time(ds.cube.attrs['header']['DATE-OBS'])
         # convert to MS time representation
         t = tm.mjd * 24 * 3600 - t0
         it = round(t/dt)
@@ -139,25 +143,26 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     info(f"processing datasets")
 
     # eliminate Stokes and freq axis, transpose to X-Y, and add time axis as #2
-    datasets = [ds.squeeze(['cube0-0', 'cube0-1']).transpose().expand_dims(dim="time", axis=2) for ds in datasets]
+    datasets = [ds.squeeze(other_dims).transpose().expand_dims(dim="TIME", axis=2) for ds in datasets]
                 
     # make blank dataset
     blank = datasets[0].copy()
-    blank['cube0'] = xarray.zeros_like(datasets[0]['cube0'])
+    blank['cube'] = xarray.zeros_like(datasets[0]['cube'])
     
     # create list of output datasets
     output_datasets = [datasets[nimg] if nimg is not None else blank for nimg in time_index]
 
     # concatenate and rechunk
-    chunks = {'cube0-2': xy_chunking, 'cube0-3': xy_chunking, 'time': time_chunking}
-    output_ds = xarray.concat(output_datasets, dim="time")
+    chunks = {ra_dim: xy_chunking, dec_dim: xy_chunking, 'TIME': time_chunking}
+    output_ds = xarray.concat(output_datasets, dim="TIME")
     
-    output_ds.attrs['time_grid'] = grid
+    output_ds.assign_coords(TIME=grid)
     output_ds.attrs['beams'] = beams
+    output_ds.attrs['radec_dims'] = ra_dim, dec_dim
     output_ds.attrs['fits_header'] = dict(hdr)
     output_ds.attrs['fits_header'].pop('HISTORY', None)
     output_ds.attrs['fits_header'].pop('COMMENT', None)
-    datacube = output_ds.cube0.data
+    datacube = output_ds.cube.data
 
     computes = []
     # convolve
@@ -186,7 +191,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
 
         info(f"saving stacked convolved cube dataset {convolved_cube}")
         # Compute the result (or you can use this in further lazy computations)
-        conv_ds = output_ds.assign(cube0=(output_ds.dims, conv_cube)).chunk(chunks=chunks)
+        conv_ds = output_ds.assign(cube=(output_ds.dims, conv_cube)).chunk(chunks=chunks)
         computes.append(conv_ds.to_zarr(convolved_cube, mode="w", compute=False))
         #conv_ds.to_zarr(convolved_cube, mode="w")
 
@@ -194,7 +199,7 @@ def stack_time_cube(images: List[str], cube: str, ms: str,
     if ratio_cube:
         ratio = conv_cube / datacube
         ratio[datacube==0] = 0
-        ratio_ds = output_ds.assign(cube0=(output_ds.dims, ratio)).chunk(chunks=chunks)
+        ratio_ds = output_ds.assign(cube=(output_ds.dims, ratio)).chunk(chunks=chunks)
         computes.append(ratio_ds.to_zarr(ratio_cube, mode="w", compute=False))
 
     # save to zarr
@@ -236,7 +241,8 @@ def convolve_time_cube(image, outimage, size_sec=0):
     ds = xarray.open_zarr(image)
     hdr = ds.attrs['fits_header']
     size_timeslots = size_sec / hdr['CDELT3']
-    array = ds.cube0.data
+    array = ds.cube.data
+    array = da.where(da.isfinite(array), array, 0)
 
     kernel = create_multidimensional_gaussian_kernel([size_timeslots], [array.shape[2]]).astype(np.float32)
     print(f"kernel shape is {kernel.shape}")
@@ -260,7 +266,7 @@ def convolve_time_cube(image, outimage, size_sec=0):
 
     print(f"saving convolved cube")
     # Compute the result (or you can use this in further lazy computations)
-    ds = ds.assign(cube0=(ds.dims, convolved_array))
+    ds = ds.assign(cube=(ds.dims, convolved_array))
     ds.to_zarr(outimage, mode="w")
     print(f"{blanks.sum().compute()}/{len(blanks)} time planes are blank")
     print(f"plane weights are {weights_conv.compute()}")
@@ -269,7 +275,7 @@ def zarr_to_fits(zarr, outimage):
     ds = xarray.open_zarr(zarr)
     print(f"saving {zarr} to {outimage}")
     # Create a Primary HDU object to encapsulate the data
-    hdu = fits.PrimaryHDU(ds.cube0.transpose(), fits.Header(ds.attrs['fits_header']))
+    hdu = fits.PrimaryHDU(ds.cube.transpose(), fits.Header(ds.attrs['fits_header']))
 
     # Create an HDUList to contain the HDU(s)
     hdulist = fits.HDUList([hdu])
@@ -315,14 +321,14 @@ timestamps = None
 highlight_timestamps = []
 plot_title_format = None
 
-def _extract_curve(isrc: int, srcnum: int):
+def _extract_curve(icurve: int, srcnum: int):
 
     what = "light curve" if not subtract_curves else "baseline-subtracted lightcurve"   
     src = cat_tab[srcnum]
     flux = fluxes[srcnum]
     x, y = img_xy[srcnum]
     radius = src['R'].to_value(u.deg)
-    print(f"extracting {what} #{isrc} for source ID {srcnum}, flux {flux*1e+6:.2f} uJy at {x}, {y} (dist {radius:.2f}deg)")
+    print(f"extracting {what} #{icurve} for source ID {srcnum}, flux {flux*1e+6:.2f} uJy at {x}, {y} (dist {radius:.2f}deg)")
 
     try:
         coord = src['pos']
@@ -538,17 +544,17 @@ def _extract_curve(isrc: int, srcnum: int):
                 ef.write(f"meta: {table_meta}\n")
             pickle.dump((lightcurve, timestamps, stddev), open(f"{lc_file}.p"))
 
-        print(f"light curve {srcnum} done")
+        print(f"light curve #{icurve} for source ID {srcnum} done")
         return srcnum, pd.DataFrame(dfdict, index=[srcnum])
 
     except Exception as exc:
         traceback.print_exc()
-        print(f"extracting light curve {srcnum}: failed with exception, see above")
+        print(f"extracting light curve #{icurve} for source ID {srcnum}: failed with exception, see above")
         return srcnum, None
 
 sources = None
 
-def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, nsrc=100, chunk_size=100, 
+def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, nsrc=0, chunk_size=100, 
                          # use this field as the flux
                          fluxcols=None,
                          # matches interesting timestamps from text file
@@ -611,7 +617,7 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     wcs = WCS(hdr)
     while len(wcs.array_shape) > 2:
         wcs = wcs.dropaxis(len(wcs.array_shape) - 1)
-    img = dataset.cube0
+    img = dataset.cube
 
     # build array of MJD timestamps
     t0 = Time(hdr['DATE-OBS'], format='fits') + TimeDelta(hdr['CRVAL3'], format=hdr['CUNIT3'])
@@ -647,7 +653,7 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     sel_sources = set()
 
     for sel in select_labels:
-        # select by matcing label
+        # select by matching label
         if sel != "*":
             subset = [num for num, lbls in enumerate(labels) if any(fnmatch.fnmatch(lbl, sel) for lbl in lbls)]
             sel_sources.update(subset)
@@ -673,12 +679,12 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
             sel_sources.update(sources)
 
     sources = sorted(sel_sources)
-    if nsrc is not None and len(sources) > nsrc:
+    if nsrc is not None and nsrc > 0 and len(sources) > nsrc:
         sources = sources[:nsrc]
         print(f"  restricting to first {len(sources)}")
 
     nsrc = len(sources)
-    print(f"{nsrc} sources selected for lightcurve extraction")
+    print(f"{nsrc} sources selected for lightcurve extraction, image shape is {img.shape}")
     if not sources:
         return
 
@@ -686,16 +692,22 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
     img_xp, img_yp = wcs.world_to_pixel(cat_tab["pos"][sources])
     img_xp = np.round(img_xp).astype(int)
     img_yp = np.round(img_yp).astype(int)
+    # eliminate out of bounds sources
+    in_bounds = (img_xp >= 0) & (img_xp < img.shape[0]) & \
+                (img_yp >= 0) & (img_yp < img.shape[1])
+    # reverse order, and form dict of {(x,y):src}, so that for multiple sources at the same location,
+    # the lowest-numbered source ends up in the dictionary
+    sources = np.array(sources)[in_bounds][::-1]
+    img_xp = img_xp[in_bounds][::-1]
+    img_yp = img_yp[in_bounds][::-1]
+    posdict = {(x, y): isrc for isrc, x, y in zip(sources, img_xp, img_yp)}
+    # reverse order back to ascending and get updated list 
+    sources = list(posdict.values())[::-1]
+    posdict = list(posdict.items())[::-1]
     # make global dict of isrc -> (x, y)
     global img_xy
-    img_xy = {isrc: (x, y) for isrc, x, y in zip(sources, img_xp, img_yp)}
+    img_xy = {isrc: (x, y) for (x, y), isrc in posdict}
 
-    # go through list of positions in reverse, and form dict from {(x,y):src}, so that for multiple sources at the same (x,y), 
-    # the lowest-numbered source ends up in the dictionary. Also eliminate out-of-bounds pixels
-    posdict = {(x, y): isrc for isrc, x, y in list(zip(sources, img_xp, img_yp))[::-1]
-                if x>=0 and y>=0 and x<img.shape[0] and y<img.shape[1]}
-
-    sources = list(posdict.values())[::-1]
     print(f"eliminating non-unique and out-of-bounds pixel positions leaves {len(sources)} sources")
 
     # now start extracting
@@ -722,7 +734,8 @@ def extract_light_curves(cube, catalog, outdir, statsfile=None, regfile=None, ns
                         default_color=default_color)
     
     # sort sources by X/Y chunking
-    chszx, chszy = dataset.cube0.chunksizes['cube0-3'], dataset.cube0.chunksizes['cube0-2']
+    dec_dim, ra_dim = dataset.attrs['radec_dims']
+    chszx, chszy = dataset.cube.chunksizes[ra_dim], dataset.cube.chunksizes[dec_dim]
     chunk_order = sorted((x // chszx[0] +  (y // chszy[0]) * 10000, isrc) for isrc, (x, y) in img_xy.items())
     # for n, isrc in chunk_order[:10]:
     #     print(n, img_xy[isrc])
