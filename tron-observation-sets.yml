@@ -16,9 +16,13 @@ obs:
     ms: ../msdir/1622491578_sdp_l0-J2009_2026-corr.ms   # L deep 1
     dir-out: obs-l1-qc2/im4htc-cad1
     band: L
+    stokes: [I,Q,U,V]
     column.residual: CORRECTED_DATA
-    deep-image: PARROT-Lband-MFS-image.fits
+    deep-image:  obs-l1-qc2/im3/im3-MFS-I-image.fits # PARROT-Lband-MFS-image.fits
+    column.data: SELFCAL3_DATA
+    # column.residual: CORRECTED_DATA
     breifast.avoid-mask: parrot-avoid-mask.fits
+    breifast.procres.beam-size: 6arcsec
 
   L2:
     ms: "../msdir/1624216341_sdp_l0-J2009_2026-corr.ms" # L deep 2
@@ -26,7 +30,8 @@ obs:
     band: L
     stokes: [I,Q,U,V]
     deep-image:  obs-l2-qc2/im3/im3-MFS-image.fits # PARROT-Lband-MFS-image.fits
-    column.residual: CORRECTED_DATA
+    column.data: SELFCAL4_DATA
+    # column.residual: CORRECTED_DATA
     breifast.avoid-mask: parrot-avoid-mask.fits
     breifast.procres.beam-size: 6arcsec
 

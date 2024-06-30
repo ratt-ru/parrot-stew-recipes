@@ -248,73 +248,30 @@ ratt-parrot:
     image-3:
       _use: lib.steps.wsclean.rrat
       params:
-        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.mask)
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.except-rrat)
         auto-threshold: 1
+        pol: IQUV
+        save-source-list: =not IFSET(current.pol)
 
-    cube-3:
-      cab: fitstool.stack-freq-cube
-      params:
-        images: =steps.image-*.restored.per-band
-        cube: "{recipe.image-prefix}-cube.fits"
+    # cube-3:
+    #   cab: fitstool.stack-freq-cube
+    #   params:
+    #     images: =steps.image-*.restored.per-band
+    #     cube: "{recipe.image-prefix}-cube.fits"
 
     fft-image-3:
       cab: fft-image
       params:
-        image: =steps.image-*.residual.mfs
-        fft-image: =STRIPEXT(steps.image-*.residual.mfs) + '.fft.fits'
+        image: =steps.image-*.residual.i.mfs
+        fft-image: =STRIPEXT(current.image) + '.fft.fits'
         lambda-per-arcsec: 100
 
     mask-3:
       recipe: make_masks
       params:
-        restored-image: "{steps.image-3.restored.mfs}"
+        restored-image: "{steps.image-3.restored.i.mfs}"
         prefix: "{steps.image-3.prefix}"
         threshold: 5
-
-    dd_selfcal-3a:
-      _use: lib.steps.quartical.k-g-de
-      params:
-        output:
-          subtract_directions: [1]
-      skip: =not recipe.ampcal
-
-    image-3a:
-      _use: lib.steps.wsclean.rrat
-      params:
-        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.mask)
-        auto-threshold: 1
-      skip: =not recipe.ampcal
-
-    mask-3a:
-      recipe: make_masks
-      params:
-        restored-image: "{previous.restored.mfs}"
-        prefix: "{previous.prefix}"
-      skip: =not recipe.ampcal
-
-    dd_selfcal-3b:
-      _use: lib.steps.quartical.k-g-de
-      params:
-        output:
-          subtract_directions: [1]
-      skip: =not recipe.ampcal
-
-    image-3b:
-      _use: lib.steps.wsclean.rrat
-      params:
-        fits-mask: =IF(recipe.automask, UNSET, steps.mask-2.mask)
-        auto-threshold: 1
-      skip: =not recipe.ampcal
-
-    image-3pol:
-      _use: lib.steps.wsclean.rrat
-      params:
-        column: SELFCAL3_DATA
-        fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.mask)
-        auto-threshold: 1
-        pol: =recipe.extra-stokes-images
-        save-source-list: false
-      skip: =not IFSET(recipe.extra-stokes-images)
 
     flagsummary-3:
       cab: casa.flagsummary
@@ -330,6 +287,7 @@ ratt-parrot:
         num-threads: =root.ncpu
         channels-out: 256
         polynomial-order: 4
+        stokes: =steps.image-*.pol
         output-prefix: "{recipe.image-prefix}-upsampled"
 
     predict-3:
@@ -338,6 +296,7 @@ ratt-parrot:
         ms: '{recipe.ms}'
         nchan: '{steps.upsample-3.channels-out}'
         prefix: '{steps.upsample-3.output-prefix}'
+        pol: =steps.image-3.pol
 
     predict-copycol-4:
       skip: =not recipe.copy-model-columns
@@ -350,6 +309,8 @@ ratt-parrot:
     dd_selfcal-4:
       _use: lib.steps.quartical.k-de
       params:
+        input_ms:
+          select_corr: [0,1,2,3]
         input_model:
           recipe: MODEL{info.suffix}_DATA:DIR1_DATA
         output:
@@ -387,8 +348,10 @@ ratt-parrot:
     image-4:
       _use: lib.steps.wsclean.rrat
       params:
-        fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.mask)
+        fits-mask: =IF(recipe.automask, UNSET, steps.mask-3.except-rrat)
         auto-threshold: 1
+        pol: IQUV
+        save-source-list: =not IFSET(current.pol)
 
     upsample-4:
       cab: smops
@@ -398,12 +361,13 @@ ratt-parrot:
         num-threads: =root.ncpu
         channels-out: 256
         polynomial-order: 4
+        stokes: =steps.image-*.pol
         output-prefix: "{recipe.image-prefix}-upsampled"
 
     fft-image-4:
       cab: fft-image
       params:
-        image: =steps.image-4.residual.mfs
+        image: =steps.image-4.residual.i.mfs
         fft-image: =STRIPEXT(current.image) + '.fft.fits'
         lambda-per-arcsec: 100
 
@@ -514,6 +478,15 @@ ratt-parrot:
         ms: '{recipe.ms}'
         prefix: =steps.upsample-4.output-prefix
         nchan: =steps.upsample-4.channels-out
+        pol: =steps.upsample-4.stokes
+
+    predict-copycol-5:
+      skip: =not recipe.copy-model-columns
+      cab: msutils.copycol
+      params:
+        msname: =recipe.ms
+        fromcol: MODEL_DATA
+        tocol: MODEL{info.suffix}_DATA
 
     add-corrected-data:
       cab: msutils.addcol
