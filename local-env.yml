@@ -1,17 +1,23 @@
+cabs:
+  wsclean:
+    backend:
+      select: native
+    command: ~/src/wsclean/bin/wsclean
+
 # use virtual_env breifast for now
 lib:
   misc:
     breifast:
-      # common options for breifast cab can set en masse here
+      # common options for breifast cabs can set en masse here
       cabs:
-        # use virtual_env breifast for now
+        # use local install of breifast for now
         backend:
           select: native
 
     suricat:
-      # common options for breifast cab can set en masse here
+      # common options for suricat cabs can set en masse here
       cabs:
-        # use virtual_env suricat for now
+        # use local install of suricat for now
         backend:
           select: native
 

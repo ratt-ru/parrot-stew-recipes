@@ -232,6 +232,7 @@ ratt-parrot:
           select_corr: [0,1,2,3]
         output:
           subtract_directions: [1]
+          apply_p_jones_inv: true
 
     ddcc_selfcal-3:
       cab: cubical
@@ -313,8 +314,10 @@ ratt-parrot:
           select_corr: [0,1,2,3]
         input_model:
           recipe: MODEL{info.suffix}_DATA:DIR1_DATA
+          apply_p_jones: true
         output:
           subtract_directions: [0,1]
+          apply_p_jones_inv: true
 
     # apply-4:
     #   _use: lib.steps.quartical.k-de
